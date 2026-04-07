@@ -6,6 +6,5210 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.65-rc.4] - 2026-04-07
+
+
+### Added
+
+- Feat(sdk/python): add per-execution LLM cost tracking (#343)
+
+* feat(sdk/python): add per-execution LLM cost tracking
+
+Add CostTracker that accumulates token usage and cost data from
+app.ai() calls. Each LLM response's cost_usd (via LiteLLM) is
+recorded before schema parsing strips the multimodal metadata.
+
+- CostTracker: thread-safe accumulator with per-model breakdown
+- Agent.cost_tracker: auto-initialized on every Agent instance
+- Agent.execution_cost: convenience property returning summary dict
+- Wired into agent_ai.py after detect_multimodal_response()
+- 6 unit tests covering record, accumulate, summary, and reset
+
+* docs: add changelog entry for cost tracking
+
+* fix: wire reasoner_name from execution context into cost tracking
+
+The CostTracker.record() accepts reasoner_name but the call site in
+agent_ai.py never passed it. Now reads it from the current
+ExecutionContext, which is set by the @reasoner decorator. (c29a2a8)
+
+- Feat: comprehensive test coverage improvements + UI revamp (#339)
+
+* feat(sdk/ts): add multimodal helpers for image, audio, file inputs/outputs
+
+* refactor(ui): migrate icons from Phosphor to Lucide
+
+Replace all @phosphor-icons/react imports with lucide-react equivalents.
+Rewrote icon-bridge.tsx to re-export Lucide icons under the same names
+used throughout the codebase, so no consumer files needed changing.
+Updated icon.tsx to use Lucide directly. Removed weight= props from
+badge.tsx, segmented-status-filter.tsx, and ReasonerCard.tsx since
+Lucide does not support the Phosphor weight API.
+
+* refactor(ui): remove MCP, Authorization, DID/VC, Packages pages — features being redesigned
+
+- Delete src/components/mcp/ (MCPServerList, MCPServerCard, MCPHealthIndicator, MCPServerControls, MCPToolExplorer, MCPToolTester)
+- Delete src/components/authorization/ (AccessRulesTab, AgentTagsTab, ApproveWithContextDialog, PolicyContextPanel, PolicyFormDialog, RevokeDialog)
+- Delete src/components/packages/ (AgentPackageCard, AgentPackageList)
+- Delete src/components/did/ (DIDIdentityCard, DIDDisplay, DIDStatusBadge, DIDInfoModal, DIDIndicator)
+- Delete src/components/vc/ (VCVerificationCard, WorkflowVCChain, SimpleVCTag, SimpleWorkflowVC, VCDetailsModal, VCStatusIndicator, VerifiableCredentialBadge)
+- Delete MCP hooks: useMCPHealth, useMCPMetrics, useMCPServers, useMCPTools
+- Delete pages: AuthorizationPage, CredentialsPage, DIDExplorerPage, PackagesPage, WorkflowDeckGLTestPage
+- Remove MCP Servers, Tools, Performance tabs from NodeDetailPage
+- Remove Identity & Trust and Authorization sections from navigation config
+- Remove deprecated routes from App.tsx router
+- Fix broken imports in WorkflowDetailPage, ReasonerDetailPage
+- Trim src/mcp/index.ts barrel to API services + types only (no component re-exports)
+
+API services (vcApi, mcpApi), types, and non-MCP hooks are preserved.
+TypeScript check passes with zero errors after cleanup.
+
+* refactor(ui): migrate to standard shadcn design tokens, remove custom foundation system
+
+- Rewrote src/index.css with clean standard shadcn/ui theme (HSL tokens for light/dark mode)
+- Deleted src/styles/foundation.css (custom token system)
+- Rewrote tailwind.config.js to minimal shadcn-standard config (removed custom spacing, fontSize, lineHeight, transitionDuration overrides)
+- Replaced ~130 component files: bg-bg-*, text-text-*, border-border-*, text-nav-*, bg-nav-*, text-heading-*, text-body*, text-caption, text-label, text-display, interactive-hover, card-elevated, focus-ring, glass, gradient-* with standard shadcn equivalents
+- Migrated status sub-tokens (status-success-bg, status-success-light, status-success-border etc.) to opacity modifiers on base status tokens
+- Updated lib/theme.ts STATUS_TONES to use standard token classes
+- Fixed workflow-table.css status dot and node status colors to use hsl(var(--status-*))
+- Zero TypeScript errors after migration
+
+* refactor(ui): remove 15 duplicate components, consolidate to single variants
+
+- Delete 4 JSON viewer duplicates (JsonViewer, EnhancedJsonViewer x2, AdvancedJsonViewer); all callers already use UnifiedJsonViewer
+- Delete 3 execution header duplicates (ExecutionHero, ExecutionHeader, EnhancedExecutionHeader); update RedesignedExecutionDetailPage to use CompactExecutionHeader
+- Delete 3 status indicator duplicates (ui/StatusIndicator, ui/status-indicator, reasoners/StatusIndicator); consolidate legacy StatusIndicator into UnifiedStatusIndicator module and create ReasonerStatusDot for reasoner-specific dot display
+- Delete RedesignedInputDataPanel and RedesignedOutputDataPanel standalone files; InputDataPanel/OutputDataPanel already export backward-compat aliases
+- Delete legacy Navigation/Sidebar, NavigationItem, NavigationSection (unused; SidebarNew is active)
+- Delete enterprise-card.tsx (no callers; card.tsx already exports cardVariants)
+- Delete animated-tabs.tsx; add AnimatedTabs* re-exports to tabs.tsx and update 5 callers
+
+* feat(ui): new app shell — minimal sidebar, health strip, 5-item nav, dark mode default
+
+- Rewrote navigation config with 5 items: Dashboard, Runs, Agents, Playground, Settings
+- Built AppSidebar using shadcn Sidebar with icon-rail collapsed by default (collapsible="icon")
+- Built HealthStrip sticky bar showing LLM, Agent fleet, and Queue status placeholders
+- Built AppLayout using SidebarProvider/SidebarInset/Outlet pattern with breadcrumb header
+- Updated App.tsx to use AppLayout as layout route wrapper, removing old SidebarNew/TopNavigation
+- Added placeholder routes for /runs, /playground and their detail pages
+- Set defaultTheme="dark" for dark-first UI
+- All existing pages (Dashboard, Executions, Workflows, Nodes, Reasoners) preserved under new layout
+
+* feat(ui): add TanStack Query data layer with query hooks for runs, agents, health
+
+- Install @tanstack/react-query v5
+- Create src/lib/query-client.ts with 30s stale time, 5min GC, retry=1
+- Wrap App with QueryClientProvider
+- Add src/hooks/queries/ with useRuns, useRunDAG, useStepDetail, useAgents, useLLMHealth, useQueueStatus, useCancelExecution, usePauseExecution, useResumeExecution
+- Barrel export via src/hooks/queries/index.ts
+- Hooks delegate to existing service functions (workflowsApi, executionsApi, api)
+- Polling: agents 10s, system health 5s, active run DAGs 3s
+
+* feat(ui): build Runs page — unified view replacing Executions + Workflows
+
+Add RunsPage component at /runs with:
+- Filter bar: time range, status, and debounced search
+- Table with columns: Run ID, Root Reasoner, Steps, Status, Duration, Started
+- Checkbox row selection with bulk action bar (Compare / Cancel Running)
+- Paginated data via useRuns hook with Load more support
+- Status badge using existing badge variants (destructive/default/secondary)
+- Duration formatting (Xs, Xm Ys, —)
+- Row click navigates to /runs/:runId
+
+Wire RunsPage into App.tsx replacing the placeholder at /runs.
+
+* feat(ui): build Playground page — test reasoners with custom input, view results
+
+Adds a new /playground and /playground/:reasonerId route with:
+- Reasoner selector grouped by agent node
+- Split-pane JSON input textarea and result display
+- Execute button with loading state (Loader2 spinner)
+- View as Execution link on successful run
+- Recent Runs table (last 5) with Load Input shortcut
+- Route-sync: selecting a reasoner updates the URL path
+
+* feat(ui): new operations-first dashboard with issues banner and recent runs
+
+Replaces /dashboard with NewDashboardPage — a focused, operations-first
+view that answers "Is anything broken? What's happening now?" rather than
+displaying metrics charts. The legacy enhanced dashboard is preserved at
+/dashboard/legacy.
+
+Key sections:
+- Issues banner (conditional): surfaces unhealthy LLM endpoints and
+  queue-saturated agents via useLLMHealth / useQueueStatus polling
+- Recent Runs table: last 10 runs with reasoner, step count, status
+  badge, duration, and relative start time; click navigates to detail
+- System Overview: 4 stat cards (Total Runs Today, Success Rate,
+  Agents Online, Avg Run Time) backed by dashboardService + TanStack
+  Query with auto-refresh
+
+* feat(ui): build simplified Agents page — node cards with inline reasoner list
+
+Replaces the /agents placeholder with a fully functional page showing
+each registered agent node as a collapsible Card. Each card displays
+status badge with live dot, last heartbeat, reasoner/skill count,
+health score, and an inline reasoner list fetched lazily from
+GET /nodes/:id/details. Supports Restart and Config actions. Auto-
+refreshes every 10 s via useAgents polling.
+
+* feat(ui): build Settings page — tabs for General, Observability, Identity, About
+
+Adds NewSettingsPage with four tabs:
+- General: placeholder for future system config
+- Observability: full webhook config (migrated from ObservabilityWebhookSettingsPage) with live forwarder status and DLQ management
+- Identity: DID system status, server DID display, export credentials
+- About: version, server URL, storage mode
+
+Updates App.tsx to route /settings to NewSettingsPage and redirect /settings/observability-webhook to /settings.
+
+* feat(ui): add URL redirects from old routes to new pages
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): build Run Detail page — trace view with step detail panel
+
+Adds RunDetailPage (/runs/:runId) as the primary execution inspection
+screen, replacing the placeholder. Features a split-panel layout with
+a proportional-bar execution trace tree on the left and collapsible
+Input/Output/Notes step detail on the right. Single-step runs skip the
+trace and show step detail directly. Includes smart polling for active
+runs and a Trace/Graph toggle (graph view placeholder).
+
+New files:
+- src/pages/RunDetailPage.tsx — main page, wires useRunDAG + state
+- src/components/RunTrace.tsx — recursive trace tree with duration bars
+- src/components/StepDetail.tsx — step I/O panel with collapsible sections
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* fix(ui): dashboard — compact rows, stats strip, fix duration formatting
+
+- Replace 4 stat cards with a horizontal stats strip above the table
+- Fix duration formatter to handle hours and days (e.g. "31d 6h", "5h 23m")
+- Compact table rows: TableHead h-8 px-3 text-[11px], TableCell px-3 py-1.5
+- Table text reduced to text-xs for all data columns
+- Remove double padding — page container is now plain flex col gap-4
+- Remove Separator between CardHeader and table
+- Tighten CardHeader to py-3 px-4 with text-sm font-medium title
+- Limit recent runs to 15 (up from 10)
+- Fix "View All" link to navigate to /runs instead of /workflows
+- Remove unused StatCard component and Clock/XCircle imports
+
+* fix(ui): agents page — compact collapsed cards, dense reasoner list, clickable headers
+
+- Cards start collapsed by default (was open): prevents 300+ item flood with 15 agents × 20+ reasoners
+- Entire card header row is the expand/collapse trigger (was isolated chevron button on far right)
+- Reasoner rows reduced to py-1 ~24px (was ~40px with tree characters)
+- Removed tree characters (├──), replaced with clean font-mono list
+- Play button always visible (was hidden on hover) with icon + label
+- Truncate reasoner list at 5, "Show N more" link to expand
+- Removed Config button and Restart text label — icon-only restart button
+- Removed redundant "15 TOTAL" badge from page header
+- Replaced space-y-* with flex flex-col gap-2 for card list
+- Removed Card/CardHeader/CardContent/Collapsible/Separator — plain divs for density
+
+* fix(ui): runs page — compact table rows, fix duration formatting
+
+- TableHead height reduced from h-10 to h-8, padding px-4 → px-3, text-[11px]
+- TableCell padding reduced from p-4 to px-3 py-1.5 across all row cells
+- Table base text changed from text-sm to text-xs for dense data display
+- Run ID and Started cells use text-[11px], Reasoner cell uses text-xs font-medium
+- Steps and Duration cells use tabular-nums for numeric alignment
+- formatDuration now handles ms, seconds, minutes, hours, and days correctly
+- space-y-4 → space-y-3 and mb-4 → mb-3 for tighter page layout
+
+* fix(ui): agents as clean list, fix sidebar, fix dashboard data, fix timestamps
+
+- Rewrite AgentsPage from bordered cards to a borderless divide-y list inside a single Card
+- Fix formatRelativeTime to guard against bogus/epoch timestamps (was showing '739709d ago')
+- Expanded reasoner rows now render inline (bg-muted/30, pl-8, text-[11px]) instead of in a nested Card
+- Remove page <h1> heading from AgentsPage — breadcrumb in AppLayout already identifies the page
+- Add delayDuration={300} to HealthStrip TooltipProvider so tooltips don't appear immediately
+- navigation.ts already correct (5 items, correct icons) — no change needed
+- Dashboard already reads runsQuery.data?.workflows and navigates to /runs — no change needed
+
+* fix(ui): sidebar — proper shadcn implementation, icon-rail with tooltips, theme toggle
+
+- Use useSidebar() state to conditionally render logo text vs icon-only in collapsed mode,
+  eliminating text overflow/clipping behind the icon rail
+- Add SidebarRail for drag-to-resize handle on desktop
+- Add SidebarSeparator between header and nav content for visual separation
+- Implement ModeToggle in SidebarFooter (sun/moon theme toggle, centered when collapsed)
+- Replace bg-primary/text-primary-foreground with bg-sidebar-primary/text-sidebar-primary-foreground
+  in logo icon container to use correct semantic sidebar tokens
+- Use text-sidebar-foreground and text-sidebar-foreground/60 for logo text
+- Add tooltip="AgentField" to logo SidebarMenuButton so collapsed state shows tooltip on hover
+- Header bar: use border-sidebar-border and bg-sidebar/30 backdrop-blur instead of border-border
+
+* feat(ui): playground — cURL copy, async cURL, schema display, better result linking
+
+- Add cURL dropdown with sync and async variants; clipboard copy with "Copied!" feedback
+- Add collapsible schema section showing input_schema and output_schema when a reasoner is selected
+- Show status badge and duration in Result card header after execution
+- Replace "View as Execution" with "View Run →" linking to /runs/:runId
+- Add "Replay" button to re-run with same input
+
+* fix(ui): sidebar default open, settings — API info, fix DID display, observability check
+
+- AppLayout: change SidebarProvider defaultOpen from false to true so
+  sidebar shows labels on first load (users can collapse via Cmd+B)
+- Settings/General: replace empty placeholder with useful content —
+  API endpoint display with copy button and quick-start env var snippet
+- Settings/Identity: fix Server DID display — was incorrectly showing
+  res.message (a status string) as the DID; now fetches the actual DID
+  from /api/v1/did/agentfield-server and displays it with a copy button;
+  shows "DID system not configured" when unavailable (local mode)
+- Settings: default tab remains "general" which is now useful content
+- Settings/Observability: tab already has full webhook config, status,
+  DLQ management — no changes needed
+
+* fix(ui): P0 fixes — routes, health strip data, agent filter, action buttons
+
+- Dashboard: routes already correct (/runs/:runId and /runs)
+- Playground: View Run link already uses /runs/:runId
+- HealthStrip: connected to real data (useLLMHealth, useQueueStatus, useAgents)
+- RunsPage: added agent filter Select, functional Compare Selected and Cancel Running buttons
+- RunDetailPage: removed broken Trace/Graph toggle (Tabs/ViewMode were declared but unused), added Cancel Run button (useCancelExecution) for running runs and Replay button for failed/timeout runs
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): step detail — JSON syntax highlighting, cURL/input/output copy, VC export
+
+- StepDetail: replace plain <pre> blocks with JsonHighlight component
+  (regex-based coloring for keys, strings, numbers, booleans, null)
+- StepDetail: add copy-action row (Copy cURL, Copy Input, Copy Output)
+  with transient check-icon feedback after clipboard write
+- RunDetailPage: add Export VC button in header that opens the
+  /api/v1/did/workflow/:id/vc-chain endpoint in a new tab
+- RunTrace: extend formatDuration to handle hours (Xh Ym) and days (Xd Yh)
+
+* feat(ui): runs table — sortable columns, agent column, better column order, status dots
+
+- Add click-to-sort on Status, Steps, Duration, and Started headers with
+  asc/desc arrow indicators; sort state flows through useRuns to the API
+- Reorder columns: Status | Reasoner | Agent | Steps | Duration | Started | Run ID
+  (status first for scannability, run ID de-emphasised at the far right)
+- Add Agent column showing agent_id / agent_name per row
+- Replace Badge with a compact StatusDot (coloured dot + short label) for
+  denser status display in table rows
+- Update search placeholder to "Search runs, reasoners, agents…" to reflect
+  multi-field search capability
+- Import cn from @/lib/utils for conditional class merging
+
+* feat(ui): run detail — integrate ReactFlow DAG as graph view toggle
+
+Wire up the existing WorkflowDAGViewer component into the Run Detail
+page as a proper Graph tab alongside the Trace view. Multi-step runs
+show a Trace/Graph toggle in the header; single-step runs skip the
+toggle entirely and show step detail directly. Clicking a node in the
+graph panel selects the step and populates the right-hand detail panel.
+
+* feat(ui): runs table — ID copy, agent.reasoner format, I/O preview, empty state
+
+- Add copy button next to each Run ID (copies full ID to clipboard)
+- Combine Agent + Reasoner columns into a single "Target" column showing
+  agent.reasoner in monospace (agent part muted, reasoner part primary)
+- Remove separate Agent column; new order: Status | Target | Steps | Duration | Started | Run ID
+- Add HoverCard on reasoner cell that lazily fetches and displays root
+  execution input/output preview (only when root_execution_id is present)
+- Replace plain "No runs found" cell with a centered empty state using
+  Play icon and context-aware helper text
+- TypeScript: 0 errors
+
+* feat(ui): run detail — full height, replay, DID badge, export dropdown, active sidebar
+
+- RunDetailPage: flex column layout with h-[calc(100vh-8rem)] so trace/step
+  panels fill the viewport instead of using fixed 500px heights
+- Reorganized header: status badge and DID badge inline with title, subtitle
+  shows workflow name + step count + duration
+- Added Replay button (navigates to playground with agent/reasoner target)
+- Added Copy ID button for quick clipboard access to the run ID
+- Replaced single Export VC button with an Export dropdown containing
+  "Export VC Chain" and "Export Audit Log" (downloads JSON)
+- AppSidebar: active nav item now renders a left-edge accent bar
+  (before:w-0.5 bg-sidebar-primary) for clear visual distinction in both
+  light and dark mode, supplementing the existing bg-sidebar-accent fill
+
+* feat(ui): trace view — step numbers, relative times, status colors, group separators
+
+- Add sequential step numbers (1-based) on every trace row for disambiguation
+- Show relative start times per step ("+0:00", "+1:23") anchored to run start
+- Color-code duration bars: green=succeeded, red=failed, amber=timeout, blue/pulse=running
+- Replace large status icons with compact inline status dots (size-1.5)
+- Add group count badge (×N) on first node of consecutive same-reasoner runs
+- Add subtle border separator when reasoner_id changes between siblings
+- Reduce row height to py-1 (28px) for better visual density
+- Pass runStartedAt prop from RunDetailPage down to RunTrace
+
+* feat(ui): command palette — Cmd+K for navigation and quick actions
+
+Adds a CommandPalette component using shadcn Command + Dialog, registered
+globally via AppLayout. Cmd+K / Ctrl+K toggles the palette; items navigate
+to Dashboard, Runs, Agents, Playground, Settings, and filtered run views.
+A ⌘K hint badge is shown in the header bar on medium+ screens.
+
+* feat(ui): run comparison page — side-by-side step diff with divergence highlighting
+
+Adds /runs/compare?a=RUN_ID_1&b=RUN_ID_2 route accessible from the Runs
+page when exactly 2 runs are selected via "Compare Selected". The page
+shows dual summary cards (status, step count, failures, duration delta),
+a step-by-step alignment table with same/diverged/extra annotations, and
+a clickable output-diff panel for diverged rows.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): virtual scrolling for trace, HITL approval UI in step detail
+
+- Flatten the recursive RunTrace tree and virtualize with @tanstack/react-virtual
+  for performant rendering of 200+ step traces (overscan=20, estimateSize=28px)
+- Extract TraceRow as a standalone component; preserve all visual logic
+  (step numbers, depth indentation, connector glyphs, status dots, bars,
+  group-count badges, relative-start times, group separators)
+- Add HITL approval card in StepDetail: shows when execution.status === "waiting"
+  or approval_request_id is present; displays approval_status badge and
+  approval_requested_at timestamp; renders Approve/Reject buttons when
+  approval_status === "pending", posting to /api/v1/webhooks/approval-response
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): SSE live updates, connection indicator, webhook delivery status in step detail
+
+- Add useSSEQuerySync hook that subscribes to execution and node SSE
+  channels and invalidates TanStack Query caches on every event, so
+  Runs, Run DAG, and Step Detail pages auto-refresh without polling
+- Mount useSSEQuerySync once in AppLayout for app-wide coverage
+- Add SSE connection status indicator (Live / Reconnecting / Disconnected)
+  to HealthStrip so users know whether real-time updates are active
+- Add Webhook Delivery collapsible section to StepDetail showing per-event
+  HTTP status, delivery time, and a Retry button for failed deliveries;
+  only rendered when webhook_registered or webhook_events are present
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* fix(ui): remove double scroll in trace, add I/O diff to comparison, sticky header
+
+- RunDetailPage: remove ScrollArea wrapper around RunTrace; the virtualizer
+  already owns its scroll container (h-full overflow-auto), so the outer
+  ScrollArea caused scroll-inside-scroll
+- ComparisonPage: replace status-only OutputDiff with StepDiff that fetches
+  both executions via useStepDetail and renders input/output JSON side-by-side
+  with error highlighting; all rows are now clickable (not just diverged)
+- ComparisonPage: make summary-cards section sticky (top-0 z-10) so it stays
+  visible while scrolling the step comparison table
+
+* fix(ui): graph view — edges visible, node clicks populate right panel instead of sidebar
+
+- Destructure onExecutionClick in WorkflowDAGViewerInner (was defined in
+  props interface but never used inside the component)
+- handleNodeClick and handleDeckNodeClick now call onExecutionClick when
+  provided, falling back to the internal NodeDetailSidebar only when no
+  parent handler is registered (preserves legacy WorkflowDetailPage usage)
+- Suppress internal NodeDetailSidebar render when onExecutionClick is set
+- FloatingEdge: remove early return null when useInternalNode yields
+  undefined; fall back to React Flow's default handle coordinates
+  (sourceX/sourceY/targetX/targetY) so edges render before the first
+  measure cycle completes
+- Fix duplicate SVG marker ids by scoping id to the edge id, preventing
+  cross-edge marker conflicts
+
+* fix(ui): graph edges invisible — wrap HSL vars in hsl() for SVG stroke attributes
+
+* web(ui): revamp layout, filters, and health strip
+
+- Update AppLayout, AppSidebar, and global styles
+- Add filter combobox components and popover
+- Refresh Agents and Runs pages with new filtering UX
+- Adjust HealthStrip; update client dependencies
+
+* feat(web): UI revamp — components, pages, logos, and shared UI utilities
+
+- Refresh control-plane web client pages and execution/reasoner components
+- Add logo assets, pagination, JSON highlight, endpoint icons, reasoner combobox
+- Add reasonerCompareExtract util; update Tailwind and global styles
+- Track Cursor continual-learning hook state artifact
+
+* feat(ui): inset shell, unified theme tokens, runs workflow updates
+
+- Sidebar inset variant with rounded rail; SidebarInset overflow/min-h-0; single main landmark
+- Dark neutrals use shared --shell-h/--shell-s; accent isolated to --brand-* (logo, rings, sidebar-primary)
+- Run detail trace/step UI, executions API/handler, scroll-area, ui-revamp docs
+
+* fix(web-ui): run detail workflow graph renders with valid React Flow bounds
+
+- Replace embedded WorkflowGraphViewport absolute inset-0 with flex layout so
+  the pane gets non-zero height in the document flow (fixes xyflow error #004).
+- Give flow containers explicit minHeight/width/flex and pass width/height
+  styles into ReactFlow and VirtualizedDAG.
+- Defer initial fitView/setViewport until after nodes commit (double rAF).
+- Reset viewport/layout only on workflow id change, not first mount; RunDetail
+  passes stable workflowId, key=runId, and graph column flex/min-height.
+
+* feat(ui): runs/step detail, DAG polish, execution APIs, provenance card
+
+- Backend: UI executions and workflow DAG handler updates.
+- Web: RunsPage, StepDetail, StepProvenanceCard; WorkflowNode and AgentLegend tweaks.
+- Client types and executions/vc API services aligned with server payloads.
+- Cursor continual-learning hook state snapshot.
+
+* feat(web): workflow DAG controls, dashboard/settings polish, runs query updates
+
+- Add WorkflowGraphControls and integrate with WorkflowDAG
+- Update AppLayout, AgentLegend, DeckGLView, VirtualizedDAG
+- Refresh NewDashboardPage, NewSettingsPage, alert component
+- Adjust useRuns hook; sync continual-learning hook state
+
+* feat(web): playground and reasoner combobox updates
+
+- Update PlaygroundPage
+- Refine reasoner-node-combobox UI
+- Sync continual-learning hook state
+
+* feat: access management UI, verify provenance, governance hooks
+
+- Add AccessManagementPage and authorization components (policies, tags, dialogs)
+- Add VerifyProvenancePage and vcApi/did type updates; af verify-provenance CLI + tests
+- Wire DID handlers, UI DID routes, API catalog, and server routes
+- Governance queries/probe/utils; navigation, App, CommandPalette, Agents/Run detail polish
+- Sync continual-learning hook state
+
+* fix(web): app shell, navigation, run detail, verify provenance polish
+
+- Tweak AppLayout and CommandPalette
+- Update navigation config
+- Refine RunDetailPage and VerifyProvenancePage
+- Sync continual-learning hook state
+
+* feat(web): dashboard workload components and Figma/shadcn audit doc
+
+- Add DashboardActiveWorkload, DashboardRunOutcomeStrip, dashboardRunUtils
+- Refactor NewDashboardPage; remove NewDashboardPage.tail.tsx
+- Update client package.json and pnpm-lock.yaml
+- Add docs/FIGMA_SHADCN_AUDIT.md
+- Sync continual-learning hook state
+
+* style(web): broad UI polish across shell, tables, DAG, and design tokens
+
+- Refine AppLayout, sidebars, navigation, and global index.css / Tailwind config
+- Update executions tables, health strip, run trace, step detail, provenance card
+- Polish WorkflowDAG components and workflow dashboard panels
+- Refresh shadcn-style UI primitives (badge, button, drawer, sidebar, etc.)
+- Add copy-identifier-chip and entity-tag components
+- Touch dashboard, authorization, and key pages (agents, runs, playground, etc.)
+- Extend FIGMA_SHADCN_AUDIT.md; sync continual-learning hook state
+
+* chore: remove internal UI planning docs and stray tooling files
+
+Drop docs/ui-revamp and embedded client audit notes from the branch;
+surface product direction in the PR instead. Remove accidentally tracked
+.agit index and Claude worktree pointer; add ignore rules.
+
+* fix: address review findings across Go handlers, TS SDK, and web UI
+
+Multi-pass code review surfaced 60 issues across security, code quality,
+performance, API design, frontend, and test coverage. This commit fixes
+the critical, high, and medium severity items:
+
+- Go: fix ValidComponents count, immutable mergeDIDBundle, empty-DID guard,
+  remove debug fmt.Printf, return 422/413 on verify-audit endpoints
+- TS SDK: fix Audio.fromFile format detection (in→includes), imageFromBuffer
+  default mimeType, remove unnecessary async on fromUrl methods
+- Web: add top-level ErrorBoundary, limit auto-reset to one attempt,
+  DEV-gate SSE console.log, opt-in events accumulation, extract
+  SortableHead component, hoist Intl.RelativeTimeFormat, guard bulk
+  cancel async handler, add keyboard a11y to table rows, convert
+  sidebar nav to Link elements, wrap DAG in ErrorBoundary, fix
+  HealthStrip false-healthy default
+
+* fix: simplify review fixes — stale state, import style, destructuring, parallel cancel
+
+- ErrorBoundary: use functional setState in auto-reset timer to avoid
+  stale closure; also clear errorInfo/errorId on auto-reset
+- RunDetailPage: use @/ alias for ErrorBoundary import (consistency)
+- useSSE: move trackEvents into existing destructuring block
+- RunsPage: parallelize bulk cancel with Promise.all instead of sequential loop
+
+* refactor: extract shared handler, reuse SortableHeaderCell, consolidate formatRelativeTime
+
+- Go: extract HandleVerifyAuditBundle into handlers/verify_audit.go,
+  both DIDHandlers.VerifyAuditBundle and DIDHandler.VerifyAuditBundleHandler
+  now delegate to the shared function (removes 30+ lines of duplication)
+- Web: replace local SortableHead in RunsPage with shared SortableHeaderCell
+  from CompactTable.tsx (reuses existing exported component)
+- Web: add formatCompactRelativeTime to utils/dateFormat.ts and replace 5
+  local copies across AgentsPage, NodesPage, CompactReasonersStats,
+  CompactWorkflowSummary, and ExecutionTimeline
+
+* fix: move ErrorBoundary inside Router to preserve routing context
+
+* style(web): redesign sign-in page with shadcn components and app branding
+
+- AuthGuard: replace raw HTML inputs/button with shadcn Card, Input,
+  Button, Alert; add app logo (light/dark), icon-prefixed fields
+  (KeyRound, ShieldCheck), Loader2 spinner, proper labels for a11y,
+  and friendlier error messages
+- AuthContext: replace plain "Loading..." text with a styled spinner
+  and "Connecting…" label matching the app's design tokens
+
+* fix: resolve all tsc -b strict build errors for CI
+
+- App.tsx: remove 8 unused page imports
+- DeckGLView.tsx: narrow zoom type (number | [number, number]) before arithmetic
+- VirtualizedDAG.tsx: cast nodeTypes/edgeTypes to satisfy xyflow strict types
+- WorkflowDAG/index.tsx: cast DeckGL node click handler and component types
+- AgentLegend.tsx: restore main's version, export layout types for callers
+- AccessRulesTab.tsx, PolicyFormDialog.tsx: remove invalid weight prop from lucide icons
+- reasoner-node-combobox.tsx: add boolean coercion for string | boolean
+- EnhancedDashboardPage.tsx: change "warning" to valid "degraded" badge variant
+- ExecutionDetailPage.tsx: create ExecutionHeader component, remove unused import
+- NodeDetailPage.tsx: restore main's version with latestEvent bindings
+- reasonerCompareExtract.ts: fix number | boolean comparison with explicit ternary
+- Add stub modules for DIDInfoModal, mcp/index, animated-tabs
+
+* security: prevent SSRF in DID resolution and custom resolver endpoints
+
+- Add safeHTTPClient with DialContext that resolves DNS and blocks
+  private/loopback/link-local IPs (10/8, 172.16/12, 192.168/16,
+  127/8, 169.254/16, ::1, fc00::/7, fe80::/10)
+- Add validateExternalURL requiring HTTPS scheme
+- Apply to resolveWebDID and resolveFromCustom (CodeQL critical findings)
+- Add io.LimitReader (2 MiB) on all external response bodies to prevent
+  memory exhaustion from malicious DID document hosts
+- Set 10s client timeout and 5s dial timeout
+
+* chore: stacked branch for UI live-update follow-up work
+
+Establishes a PR stack on top of #330. No functional changes yet.
+
+* feat(web): unified SSE sync and adaptive polling for live UI
+
+- SSESyncProvider runs executions, nodes, and reasoners SSE once; invalidates
+  runs, run-dag, step-detail, agents, reasoners, and dashboard-summary
+- HealthStrip uses shared connection state; Refresh resyncs when streams are down
+- Faster TanStack refetch intervals when SSE is disconnected (runs, agents,
+  LLM/queue, dashboard summary); explicit run list intervals tighten too
+- useRunDAG/useStepDetail poll active steps more often, especially without SSE
+- AllReasonersPage uses React Query with SSE-driven invalidation and 6s fallback
+
+* fix(web): match polling and badges to the SSE channel that feeds each view
+
+- useRuns, run DAG/step detail, dashboard summary, LLM/queue: gate on execConnected
+- useAgents: gate on nodeConnected
+- All Reasoners: fallback poll when neither node nor reasoner stream is up
+- HealthStrip Live/Refresh tied to execution stream (runs/steps)
+
+* agit sync
+
+* agit sync
+
+* fix(web): tighten live update gating
+
+* feat: agent node process logs (Python NDJSON, CP proxy, UI panel)
+
+- Document NDJSON v1 contract and UI proxy path in docs/api/AGENT_NODE_LOGS.md
+- Python SDK: ring buffer, stdio tee, GET /agentfield/v1/logs with internal bearer
+- Control plane: proxy GET /api/ui/v1/nodes/:nodeId/logs, node-log-proxy settings GET/PUT
+- Web UI: NodeProcessLogsPanel on Agents expanded row and Node detail Logs tab;
+  Settings tab for proxy limits using existing shadcn cards and patterns
+
+* docs: document node log proxy and agent log env vars in .env.example
+
+* fix: align .env.example log vars with Python node_logs.py
+
+* agit sync
+
+* agit sync
+
+* chore: log-demo compose, UI proxy functional test, example heartbeats
+
+- Makefile targets log-demo-up / log-demo-down
+- docker-compose.log-demo.yml + Node log-demo agent Dockerfile
+- test_ui_proxies_node_process_logs exercises GET /api/ui/v1/nodes/:id/logs
+- Python + Go demo agents emit periodic stdout/stderr for UI verification
+- Trim unused notify from Go process log ring; drop unused TS import
+
+* fix(docker): wait for CP health before log-demo agents start
+
+Add wait-control-plane (curl with retries) and depends_on completed_successfully
+so Python/Go/Node demo agents do not register before the API is ready.
+Set restart: unless-stopped on demo agents. Document behavior in LOG_DEMO.md.
+
+* feat(scripts): host log-demo stack when Docker is unavailable
+
+Add run-log-demo-native.sh / stop-log-demo-native.sh with writable paths
+(env overrides for SQLite, Bolt, DID keystore under /tmp/agentfield-log-demo).
+Makefile targets log-demo-native-up/down. Document in LOG_DEMO.md.
+
+Fixes local runs using agentfield-test.yaml which points storage at /data.
+
+* feat(ui,sdks): process log filters, structured rows, NDJSON level/source
+
+- AgentsPage: full-width tab bar aligned with node detail (icons, muted track).
+- NodeProcessLogsPanel: stream segmented control (All/Stdout/Stderr with counts),
+  text search across line/seq/level/source, rows show local time + date when not
+  today, seq, stream/level badges, optional source line; stderr row tint.
+- NodeLogEntry type: optional level, source.
+- Python/Go/TypeScript SDKs: emit level (info/error/log) and source=process
+  for stdio capture; document in AGENT_NODE_LOGS.md.
+
+* fix: tighten audit verification and multimodal IO
+
+* feat(ui): agents page heading, nav labels, compact responsive logs
+
+- Page h1 Agent nodes & logs; sidebar/command palette use Agent nodes
+- Agents row: terminal shortcut + controlled tabs; breadcrumb route name
+- NodeProcessLogsPanel: responsive header toolbars, compact log grid,
+  hide redundant level badges, optional native demo scripts unchanged
+
+* fix(sdk/python): drop unused Generator import (ruff F401)
+
+Unblocks Python SDK CI lint-and-test job.
+
+* fix(sdk/ts): qualify Express Response in flush cast (TS2352)
+
+Bare Response resolved to DOM Fetch Response; use import('express').Response.
+
+* fix(ci): harden DID fetches and stabilize node log proxy test
+
+* agit sync
+
+* fix(web): avoid format strings in node action logs
+
+* fix(cli): keep VC verification offline-only
+
+* fix(tests): write node log marker into process ring
+
+* docs: add execution observability RFC
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* feat: add execution logging transport
+
+* feat(py): add structured execution logging
+
+* agit sync
+
+* feat(web): unify execution observability panel
+
+* Remove local plandb database from repo
+
+* fix demo execution observability flow
+
+* refactor run detail into execution and logs tabs
+
+* refine execution logs density
+
+* agit sync
+
+* polish execution logs panel header
+
+* refine raw node log console
+
+* polish process log filter toolbar
+
+* standardize observability spacing primitives
+
+* agit sync
+
+* test execution observability in functional harness
+
+* agit sync
+
+* test(go-sdk): add tests for types/status, types/types, types/discovery, did/types, agent/harness
+
+Adds comprehensive test coverage for previously untested Go SDK packages:
+- types/status_test.go: NormalizeStatus (canonical pass-through, all aliases, case-insensitive, whitespace trimming), IsTerminalStatus, IsActiveStatus, mutual-exclusivity invariant
+- types/types_test.go: JSON round-trip for all structs (NodeRegistrationRequest/Response, WorkflowExecutionEvent, ActionAckRequest, LeaseResponse, ShutdownRequest, NodeStatusUpdate), omitempty field validation, constant value assertions
+- types/discovery_test.go: JSON round-trip for DiscoveryResponse, CompactDiscoveryResponse, all capability types; optional field omission
+- did/types_test.go: JSON round-trip for DIDIdentity, DIDIdentityPackage, RegistrationRequest/Response, ExecutionContext, VCGenerationRequest, ExecutionVC, WorkflowVCChain; omitempty validation
+- agent/harness_test.go: HarnessRunner lazy initialization, singleton behavior, HarnessConfig field mapping, concurrent access safety, error propagation without provider, per-call option override
+
+* test: comprehensive test coverage audit and implementation
+
+- Add TEST_COVERAGE_AUDIT.md with full audit of all 645 source files
+- Control plane: memory handler tests (30 tests), nodes_rest handler tests
+- Python SDK: verification, node_logs, mcp_manager, mcp_stdio_bridge, serverless tests (143 tests)
+- TypeScript SDK: ExecutionContext, MemoryClient, WorkflowReporter, AgentRouter, MCPClient tests (110 tests)
+- All tests passing across Go, Python, and TypeScript
+
+* fix(tests): address quality audit — eliminate false greens and strengthen assertions
+
+- verification.py: add @pytest.mark.asyncio to async tests (were silently passing as no-ops)
+- mcp_manager: replace vacuous `or True` assertion with real post-condition check
+- memory_test: add AssertNotCalled for PublishMemoryChange when StoreEvent fails
+- memory_test: add delete handler event verification (action, key, previous_data)
+- agent_serverless: add real-registration tests (not just patch.object)
+- agent_serverless: verify async_mode precondition was True before asserting False
+- nodes_rest_test: add normalizePhase distinctness invariant test
+- nodes_rest_test: document that handler behavior tests require StorageProvider mock
+
+* test: add invariant and property-based tests for AI code safety
+
+Add test_invariants.py with 15 tests covering:
+- Status normalization: idempotency, fixed-point, disjointness, coverage
+- Execution context: cleanup after success/failure, no state leaking
+- Memory scope independence
+- Serialization roundtrip preservation
+- Discovery response schema stability
+- ProcessLogRing sequence monotonicity (including after eviction)
+- Error response structure consistency
+- Property-based fuzzing with hypothesis (when available)
+
+* test(ts-sdk): add behavioral invariant tests for rate limiter, DID auth, memory, agent, execution context
+
+Adds 68 invariant tests across 5 new files verifying structural properties
+that must always hold: circuit breaker state machine transitions, consecutive
+failure counter monotonicity, nonce uniqueness and timestamp ordering in DID
+signing, scope-to-header mapping stability in MemoryClient, reasoner/skill
+namespace independence in Agent, and AsyncLocalStorage scope isolation in
+ExecutionContext (including concurrent execution safety).
+
+* test(control-plane): add behavioral invariant tests for event bus, UoW, state machine, memory
+
+Adds 35 property-based invariant tests across four packages designed to catch
+regressions in AI-generated code changes by verifying structural contracts
+rather than specific input→output pairs.
+
+- events: ordering, silent drop on full buffer, subscriber isolation, concurrent
+  publish safety (-race), unsubscribe channel closure, no retroactive delivery
+- storage/unitofwork: registration ordering, IsActive lifecycle, idempotent
+  rollback, HasChanges correctness, register-ignored-when-inactive, ChangeType
+  attribution
+- storage/execution_state: terminal irreversibility, full reachability BFS from
+  "unknown", determinism, alias normalization equivalence, known valid/invalid
+  transition regression guards
+- handlers/memory: Set-Get roundtrip, scope isolation, Delete removes, event
+  action assertions (set/delete), hierarchical scope search order
+  (workflow→session→actor→global)
+
+* agit sync
+
+* agit sync
+
+* test(python-sdk): add behavioral invariant tests for DID auth, memory, connection, execution state, agent lifecycle
+
+71 invariant tests covering:
+- DID auth: nonce uniqueness, timestamp freshness, signature determinism/sensitivity, header completeness
+- Memory: scope hierarchy order, scope independence, key namespacing, null safety
+- Connection manager: state machine transitions, shutdown idempotency
+- Execution state: normalization idempotency, terminal detection, serialization roundtrip, metrics monotonicity
+- Agent lifecycle: registration persistence, double-registration replacement, discovery schema stability, node_id immutability
+
+* fix(tests): resolve CI lint failures — remove unused imports, fix f-strings
+
+Ruff auto-fixed 48 lint issues across all Python test files:
+- Remove unused imports (typing.Any, typing.Dict, asyncio, etc.)
+- Remove f-string prefix on strings without placeholders
+- Remove unused local variables
+- Add noqa for intentional import-for-availability check
+
+* test(go-sdk): add behavioral invariant tests for client, agent, status, harness
+
+Invariant tests covering:
+- Client: base URL normalization, auth header mutual exclusivity, error structure, timeout propagation
+- Agent: registration idempotency, config immutability, discovery schema stability
+  NOTE: concurrent registration test skipped — found real race in RegisterReasoner (agent.go:546)
+- Status: normalization is a projection, terminal/active partition, alias→canonical consistency, case insensitivity
+- Harness: retry bounded by MaxRetries, schema repair idempotency (known limitation: multiple trailing commas)
+
+* fix(tests): add event loop fixture for Python 3.8/3.9 compatibility
+
+Agent() constructor and handle_serverless() use asyncio internally.
+On Python 3.8/3.9, asyncio.get_event_loop() raises RuntimeError in
+non-async contexts without an explicitly created loop. Add autouse
+fixture that ensures a loop exists.
+
+* fix(tests): remove MCP test files (unused feature), restore Go SDK source files
+
+- Remove test_mcp_manager.py, test_mcp_stdio_bridge.py, mcp_client_expanded.test.ts
+  (MCP is not a shipped feature — no need for test coverage)
+- Re-skip Go SDK concurrent registration test (production fix tracked separately)
+- Re-skip schema repair idempotency for multiple commas (fix tracked separately)
+- Restore original agent.go, cli.go, schema.go (production fixes go in separate PR)
+
+* test(ts-sdk,web-ui): add skill/reasoner registry tests and Web UI service layer tests
+
+- sdk/typescript/tests/skill_registry.test.ts: 11 tests covering register,
+  get, all(), duplicate overwrite, and includeRouter integration with AgentRouter
+- sdk/typescript/tests/reasoner_registry.test.ts: 13 tests covering the same
+  surface on ReasonerRegistry, including isolation (skills not imported)
+- control-plane/web/client/src/test/services/api.test.ts: 15 tests for the
+  base API client — key/token management, X-API-Key header injection, error
+  parsing, timeout handling, and parseNodeLogsNDJSON
+- control-plane/web/client/src/test/services/dashboardService.test.ts: 10
+  tests for getDashboardSummary, getDashboardSummaryWithRetry, and
+  getEnhancedDashboardSummary including query-string parameter forwarding
+- control-plane/web/client/src/test/services/executionsApi.test.ts: 19 tests
+  for list/get/filter/pagination, field normalisation, alternative field-name
+  fallbacks, cancelExecution, and getExecutionStats
+
+All 68 new tests pass (24 SDK + 44 Web UI).
+
+* test(storage): add integration tests for local.go — agent CRUD, executions, workflows, memory
+
+Covers the four highest-impact categories of LocalStorage operations:
+- Agent CRUD: register/get roundtrip, upsert on re-register, list, delete-version, not-found
+- AgentExecution records: store/get, query by agent ID and status, pagination
+- WorkflowExecution: store/get, query by workflow ID, state-machine-aware status update
+- Memory (BoltDB): set/get for all scopes, scope isolation, delete, list, overwrite, scope-ID isolation
+- Invariants: empty DB returns non-nil empty slices, stored timestamps are UTC
+
+All tests run against a real SQLite + BoltDB backed by t.TempDir().
+
+* test(control-plane): add handler and service tests — agentic status, config storage, memory ACL, tag normalization
+
+* fix(storage): graceful LIKE fallback when SQLite FTS5 module is unavailable
+
+QueryWorkflowExecutions now checks hasFTS5 flag and falls back to
+LIKE-based search across key columns instead of failing with
+"no such table: workflow_executions_fts".
+
+* test: add 270 tests for critical coverage gaps — types, agent_server, connector handlers, MCP, ExecutionStatus
+
+Python SDK:
+- test_types.py: 99 tests covering all Pydantic/dataclass models, enums, serialization
+- test_agent_server.py: 54 tests covering routes, health, MCP ops, approval, utilities
+
+Go Control Plane:
+- connector/handlers_test.go: 48 tests covering all HTTP handlers, capability gating, errors
+
+TypeScript SDK:
+- execution_status.test.ts: 22 tests for status normalization, terminal/active classification
+- mcp_client.test.ts: 27 tests for health checks, tool listing, tool execution
+- mcp_registry.test.ts: 20 tests for client registry, tool registrar, namespace handling
+
+* fix(ci): remove unused imports — os in test_agent_server.py, beforeEach/makeFetchMock in api.test.ts
+
+* agit sync
+
+* fix(tests): align tests with main branch changes, remove .cursor files
+
+- Update execution state invariant tests: timeout is no longer fully
+  terminal — allows transitions to running/cancelled (stale reaper fix)
+- Add post_execution_logs mock to MockClient (new SDK method)
+- Remove opencode_server test assertions (feature removed in PR #326)
+- Remove tracked .cursor/ IDE state files
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com> (bd41402)
+
+- Feat(web): operations-first control plane UI revamp with live updates and node logs (#330)
+
+* feat(sdk/ts): add multimodal helpers for image, audio, file inputs/outputs
+
+* refactor(ui): migrate icons from Phosphor to Lucide
+
+Replace all @phosphor-icons/react imports with lucide-react equivalents.
+Rewrote icon-bridge.tsx to re-export Lucide icons under the same names
+used throughout the codebase, so no consumer files needed changing.
+Updated icon.tsx to use Lucide directly. Removed weight= props from
+badge.tsx, segmented-status-filter.tsx, and ReasonerCard.tsx since
+Lucide does not support the Phosphor weight API.
+
+* refactor(ui): remove MCP, Authorization, DID/VC, Packages pages — features being redesigned
+
+- Delete src/components/mcp/ (MCPServerList, MCPServerCard, MCPHealthIndicator, MCPServerControls, MCPToolExplorer, MCPToolTester)
+- Delete src/components/authorization/ (AccessRulesTab, AgentTagsTab, ApproveWithContextDialog, PolicyContextPanel, PolicyFormDialog, RevokeDialog)
+- Delete src/components/packages/ (AgentPackageCard, AgentPackageList)
+- Delete src/components/did/ (DIDIdentityCard, DIDDisplay, DIDStatusBadge, DIDInfoModal, DIDIndicator)
+- Delete src/components/vc/ (VCVerificationCard, WorkflowVCChain, SimpleVCTag, SimpleWorkflowVC, VCDetailsModal, VCStatusIndicator, VerifiableCredentialBadge)
+- Delete MCP hooks: useMCPHealth, useMCPMetrics, useMCPServers, useMCPTools
+- Delete pages: AuthorizationPage, CredentialsPage, DIDExplorerPage, PackagesPage, WorkflowDeckGLTestPage
+- Remove MCP Servers, Tools, Performance tabs from NodeDetailPage
+- Remove Identity & Trust and Authorization sections from navigation config
+- Remove deprecated routes from App.tsx router
+- Fix broken imports in WorkflowDetailPage, ReasonerDetailPage
+- Trim src/mcp/index.ts barrel to API services + types only (no component re-exports)
+
+API services (vcApi, mcpApi), types, and non-MCP hooks are preserved.
+TypeScript check passes with zero errors after cleanup.
+
+* refactor(ui): migrate to standard shadcn design tokens, remove custom foundation system
+
+- Rewrote src/index.css with clean standard shadcn/ui theme (HSL tokens for light/dark mode)
+- Deleted src/styles/foundation.css (custom token system)
+- Rewrote tailwind.config.js to minimal shadcn-standard config (removed custom spacing, fontSize, lineHeight, transitionDuration overrides)
+- Replaced ~130 component files: bg-bg-*, text-text-*, border-border-*, text-nav-*, bg-nav-*, text-heading-*, text-body*, text-caption, text-label, text-display, interactive-hover, card-elevated, focus-ring, glass, gradient-* with standard shadcn equivalents
+- Migrated status sub-tokens (status-success-bg, status-success-light, status-success-border etc.) to opacity modifiers on base status tokens
+- Updated lib/theme.ts STATUS_TONES to use standard token classes
+- Fixed workflow-table.css status dot and node status colors to use hsl(var(--status-*))
+- Zero TypeScript errors after migration
+
+* refactor(ui): remove 15 duplicate components, consolidate to single variants
+
+- Delete 4 JSON viewer duplicates (JsonViewer, EnhancedJsonViewer x2, AdvancedJsonViewer); all callers already use UnifiedJsonViewer
+- Delete 3 execution header duplicates (ExecutionHero, ExecutionHeader, EnhancedExecutionHeader); update RedesignedExecutionDetailPage to use CompactExecutionHeader
+- Delete 3 status indicator duplicates (ui/StatusIndicator, ui/status-indicator, reasoners/StatusIndicator); consolidate legacy StatusIndicator into UnifiedStatusIndicator module and create ReasonerStatusDot for reasoner-specific dot display
+- Delete RedesignedInputDataPanel and RedesignedOutputDataPanel standalone files; InputDataPanel/OutputDataPanel already export backward-compat aliases
+- Delete legacy Navigation/Sidebar, NavigationItem, NavigationSection (unused; SidebarNew is active)
+- Delete enterprise-card.tsx (no callers; card.tsx already exports cardVariants)
+- Delete animated-tabs.tsx; add AnimatedTabs* re-exports to tabs.tsx and update 5 callers
+
+* feat(ui): new app shell — minimal sidebar, health strip, 5-item nav, dark mode default
+
+- Rewrote navigation config with 5 items: Dashboard, Runs, Agents, Playground, Settings
+- Built AppSidebar using shadcn Sidebar with icon-rail collapsed by default (collapsible="icon")
+- Built HealthStrip sticky bar showing LLM, Agent fleet, and Queue status placeholders
+- Built AppLayout using SidebarProvider/SidebarInset/Outlet pattern with breadcrumb header
+- Updated App.tsx to use AppLayout as layout route wrapper, removing old SidebarNew/TopNavigation
+- Added placeholder routes for /runs, /playground and their detail pages
+- Set defaultTheme="dark" for dark-first UI
+- All existing pages (Dashboard, Executions, Workflows, Nodes, Reasoners) preserved under new layout
+
+* feat(ui): add TanStack Query data layer with query hooks for runs, agents, health
+
+- Install @tanstack/react-query v5
+- Create src/lib/query-client.ts with 30s stale time, 5min GC, retry=1
+- Wrap App with QueryClientProvider
+- Add src/hooks/queries/ with useRuns, useRunDAG, useStepDetail, useAgents, useLLMHealth, useQueueStatus, useCancelExecution, usePauseExecution, useResumeExecution
+- Barrel export via src/hooks/queries/index.ts
+- Hooks delegate to existing service functions (workflowsApi, executionsApi, api)
+- Polling: agents 10s, system health 5s, active run DAGs 3s
+
+* feat(ui): build Runs page — unified view replacing Executions + Workflows
+
+Add RunsPage component at /runs with:
+- Filter bar: time range, status, and debounced search
+- Table with columns: Run ID, Root Reasoner, Steps, Status, Duration, Started
+- Checkbox row selection with bulk action bar (Compare / Cancel Running)
+- Paginated data via useRuns hook with Load more support
+- Status badge using existing badge variants (destructive/default/secondary)
+- Duration formatting (Xs, Xm Ys, —)
+- Row click navigates to /runs/:runId
+
+Wire RunsPage into App.tsx replacing the placeholder at /runs.
+
+* feat(ui): build Playground page — test reasoners with custom input, view results
+
+Adds a new /playground and /playground/:reasonerId route with:
+- Reasoner selector grouped by agent node
+- Split-pane JSON input textarea and result display
+- Execute button with loading state (Loader2 spinner)
+- View as Execution link on successful run
+- Recent Runs table (last 5) with Load Input shortcut
+- Route-sync: selecting a reasoner updates the URL path
+
+* feat(ui): new operations-first dashboard with issues banner and recent runs
+
+Replaces /dashboard with NewDashboardPage — a focused, operations-first
+view that answers "Is anything broken? What's happening now?" rather than
+displaying metrics charts. The legacy enhanced dashboard is preserved at
+/dashboard/legacy.
+
+Key sections:
+- Issues banner (conditional): surfaces unhealthy LLM endpoints and
+  queue-saturated agents via useLLMHealth / useQueueStatus polling
+- Recent Runs table: last 10 runs with reasoner, step count, status
+  badge, duration, and relative start time; click navigates to detail
+- System Overview: 4 stat cards (Total Runs Today, Success Rate,
+  Agents Online, Avg Run Time) backed by dashboardService + TanStack
+  Query with auto-refresh
+
+* feat(ui): build simplified Agents page — node cards with inline reasoner list
+
+Replaces the /agents placeholder with a fully functional page showing
+each registered agent node as a collapsible Card. Each card displays
+status badge with live dot, last heartbeat, reasoner/skill count,
+health score, and an inline reasoner list fetched lazily from
+GET /nodes/:id/details. Supports Restart and Config actions. Auto-
+refreshes every 10 s via useAgents polling.
+
+* feat(ui): build Settings page — tabs for General, Observability, Identity, About
+
+Adds NewSettingsPage with four tabs:
+- General: placeholder for future system config
+- Observability: full webhook config (migrated from ObservabilityWebhookSettingsPage) with live forwarder status and DLQ management
+- Identity: DID system status, server DID display, export credentials
+- About: version, server URL, storage mode
+
+Updates App.tsx to route /settings to NewSettingsPage and redirect /settings/observability-webhook to /settings.
+
+* feat(ui): add URL redirects from old routes to new pages
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): build Run Detail page — trace view with step detail panel
+
+Adds RunDetailPage (/runs/:runId) as the primary execution inspection
+screen, replacing the placeholder. Features a split-panel layout with
+a proportional-bar execution trace tree on the left and collapsible
+Input/Output/Notes step detail on the right. Single-step runs skip the
+trace and show step detail directly. Includes smart polling for active
+runs and a Trace/Graph toggle (graph view placeholder).
+
+New files:
+- src/pages/RunDetailPage.tsx — main page, wires useRunDAG + state
+- src/components/RunTrace.tsx — recursive trace tree with duration bars
+- src/components/StepDetail.tsx — step I/O panel with collapsible sections
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* fix(ui): dashboard — compact rows, stats strip, fix duration formatting
+
+- Replace 4 stat cards with a horizontal stats strip above the table
+- Fix duration formatter to handle hours and days (e.g. "31d 6h", "5h 23m")
+- Compact table rows: TableHead h-8 px-3 text-[11px], TableCell px-3 py-1.5
+- Table text reduced to text-xs for all data columns
+- Remove double padding — page container is now plain flex col gap-4
+- Remove Separator between CardHeader and table
+- Tighten CardHeader to py-3 px-4 with text-sm font-medium title
+- Limit recent runs to 15 (up from 10)
+- Fix "View All" link to navigate to /runs instead of /workflows
+- Remove unused StatCard component and Clock/XCircle imports
+
+* fix(ui): agents page — compact collapsed cards, dense reasoner list, clickable headers
+
+- Cards start collapsed by default (was open): prevents 300+ item flood with 15 agents × 20+ reasoners
+- Entire card header row is the expand/collapse trigger (was isolated chevron button on far right)
+- Reasoner rows reduced to py-1 ~24px (was ~40px with tree characters)
+- Removed tree characters (├──), replaced with clean font-mono list
+- Play button always visible (was hidden on hover) with icon + label
+- Truncate reasoner list at 5, "Show N more" link to expand
+- Removed Config button and Restart text label — icon-only restart button
+- Removed redundant "15 TOTAL" badge from page header
+- Replaced space-y-* with flex flex-col gap-2 for card list
+- Removed Card/CardHeader/CardContent/Collapsible/Separator — plain divs for density
+
+* fix(ui): runs page — compact table rows, fix duration formatting
+
+- TableHead height reduced from h-10 to h-8, padding px-4 → px-3, text-[11px]
+- TableCell padding reduced from p-4 to px-3 py-1.5 across all row cells
+- Table base text changed from text-sm to text-xs for dense data display
+- Run ID and Started cells use text-[11px], Reasoner cell uses text-xs font-medium
+- Steps and Duration cells use tabular-nums for numeric alignment
+- formatDuration now handles ms, seconds, minutes, hours, and days correctly
+- space-y-4 → space-y-3 and mb-4 → mb-3 for tighter page layout
+
+* fix(ui): agents as clean list, fix sidebar, fix dashboard data, fix timestamps
+
+- Rewrite AgentsPage from bordered cards to a borderless divide-y list inside a single Card
+- Fix formatRelativeTime to guard against bogus/epoch timestamps (was showing '739709d ago')
+- Expanded reasoner rows now render inline (bg-muted/30, pl-8, text-[11px]) instead of in a nested Card
+- Remove page <h1> heading from AgentsPage — breadcrumb in AppLayout already identifies the page
+- Add delayDuration={300} to HealthStrip TooltipProvider so tooltips don't appear immediately
+- navigation.ts already correct (5 items, correct icons) — no change needed
+- Dashboard already reads runsQuery.data?.workflows and navigates to /runs — no change needed
+
+* fix(ui): sidebar — proper shadcn implementation, icon-rail with tooltips, theme toggle
+
+- Use useSidebar() state to conditionally render logo text vs icon-only in collapsed mode,
+  eliminating text overflow/clipping behind the icon rail
+- Add SidebarRail for drag-to-resize handle on desktop
+- Add SidebarSeparator between header and nav content for visual separation
+- Implement ModeToggle in SidebarFooter (sun/moon theme toggle, centered when collapsed)
+- Replace bg-primary/text-primary-foreground with bg-sidebar-primary/text-sidebar-primary-foreground
+  in logo icon container to use correct semantic sidebar tokens
+- Use text-sidebar-foreground and text-sidebar-foreground/60 for logo text
+- Add tooltip="AgentField" to logo SidebarMenuButton so collapsed state shows tooltip on hover
+- Header bar: use border-sidebar-border and bg-sidebar/30 backdrop-blur instead of border-border
+
+* feat(ui): playground — cURL copy, async cURL, schema display, better result linking
+
+- Add cURL dropdown with sync and async variants; clipboard copy with "Copied!" feedback
+- Add collapsible schema section showing input_schema and output_schema when a reasoner is selected
+- Show status badge and duration in Result card header after execution
+- Replace "View as Execution" with "View Run →" linking to /runs/:runId
+- Add "Replay" button to re-run with same input
+
+* fix(ui): sidebar default open, settings — API info, fix DID display, observability check
+
+- AppLayout: change SidebarProvider defaultOpen from false to true so
+  sidebar shows labels on first load (users can collapse via Cmd+B)
+- Settings/General: replace empty placeholder with useful content —
+  API endpoint display with copy button and quick-start env var snippet
+- Settings/Identity: fix Server DID display — was incorrectly showing
+  res.message (a status string) as the DID; now fetches the actual DID
+  from /api/v1/did/agentfield-server and displays it with a copy button;
+  shows "DID system not configured" when unavailable (local mode)
+- Settings: default tab remains "general" which is now useful content
+- Settings/Observability: tab already has full webhook config, status,
+  DLQ management — no changes needed
+
+* fix(ui): P0 fixes — routes, health strip data, agent filter, action buttons
+
+- Dashboard: routes already correct (/runs/:runId and /runs)
+- Playground: View Run link already uses /runs/:runId
+- HealthStrip: connected to real data (useLLMHealth, useQueueStatus, useAgents)
+- RunsPage: added agent filter Select, functional Compare Selected and Cancel Running buttons
+- RunDetailPage: removed broken Trace/Graph toggle (Tabs/ViewMode were declared but unused), added Cancel Run button (useCancelExecution) for running runs and Replay button for failed/timeout runs
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): step detail — JSON syntax highlighting, cURL/input/output copy, VC export
+
+- StepDetail: replace plain <pre> blocks with JsonHighlight component
+  (regex-based coloring for keys, strings, numbers, booleans, null)
+- StepDetail: add copy-action row (Copy cURL, Copy Input, Copy Output)
+  with transient check-icon feedback after clipboard write
+- RunDetailPage: add Export VC button in header that opens the
+  /api/v1/did/workflow/:id/vc-chain endpoint in a new tab
+- RunTrace: extend formatDuration to handle hours (Xh Ym) and days (Xd Yh)
+
+* feat(ui): runs table — sortable columns, agent column, better column order, status dots
+
+- Add click-to-sort on Status, Steps, Duration, and Started headers with
+  asc/desc arrow indicators; sort state flows through useRuns to the API
+- Reorder columns: Status | Reasoner | Agent | Steps | Duration | Started | Run ID
+  (status first for scannability, run ID de-emphasised at the far right)
+- Add Agent column showing agent_id / agent_name per row
+- Replace Badge with a compact StatusDot (coloured dot + short label) for
+  denser status display in table rows
+- Update search placeholder to "Search runs, reasoners, agents…" to reflect
+  multi-field search capability
+- Import cn from @/lib/utils for conditional class merging
+
+* feat(ui): run detail — integrate ReactFlow DAG as graph view toggle
+
+Wire up the existing WorkflowDAGViewer component into the Run Detail
+page as a proper Graph tab alongside the Trace view. Multi-step runs
+show a Trace/Graph toggle in the header; single-step runs skip the
+toggle entirely and show step detail directly. Clicking a node in the
+graph panel selects the step and populates the right-hand detail panel.
+
+* feat(ui): runs table — ID copy, agent.reasoner format, I/O preview, empty state
+
+- Add copy button next to each Run ID (copies full ID to clipboard)
+- Combine Agent + Reasoner columns into a single "Target" column showing
+  agent.reasoner in monospace (agent part muted, reasoner part primary)
+- Remove separate Agent column; new order: Status | Target | Steps | Duration | Started | Run ID
+- Add HoverCard on reasoner cell that lazily fetches and displays root
+  execution input/output preview (only when root_execution_id is present)
+- Replace plain "No runs found" cell with a centered empty state using
+  Play icon and context-aware helper text
+- TypeScript: 0 errors
+
+* feat(ui): run detail — full height, replay, DID badge, export dropdown, active sidebar
+
+- RunDetailPage: flex column layout with h-[calc(100vh-8rem)] so trace/step
+  panels fill the viewport instead of using fixed 500px heights
+- Reorganized header: status badge and DID badge inline with title, subtitle
+  shows workflow name + step count + duration
+- Added Replay button (navigates to playground with agent/reasoner target)
+- Added Copy ID button for quick clipboard access to the run ID
+- Replaced single Export VC button with an Export dropdown containing
+  "Export VC Chain" and "Export Audit Log" (downloads JSON)
+- AppSidebar: active nav item now renders a left-edge accent bar
+  (before:w-0.5 bg-sidebar-primary) for clear visual distinction in both
+  light and dark mode, supplementing the existing bg-sidebar-accent fill
+
+* feat(ui): trace view — step numbers, relative times, status colors, group separators
+
+- Add sequential step numbers (1-based) on every trace row for disambiguation
+- Show relative start times per step ("+0:00", "+1:23") anchored to run start
+- Color-code duration bars: green=succeeded, red=failed, amber=timeout, blue/pulse=running
+- Replace large status icons with compact inline status dots (size-1.5)
+- Add group count badge (×N) on first node of consecutive same-reasoner runs
+- Add subtle border separator when reasoner_id changes between siblings
+- Reduce row height to py-1 (28px) for better visual density
+- Pass runStartedAt prop from RunDetailPage down to RunTrace
+
+* feat(ui): command palette — Cmd+K for navigation and quick actions
+
+Adds a CommandPalette component using shadcn Command + Dialog, registered
+globally via AppLayout. Cmd+K / Ctrl+K toggles the palette; items navigate
+to Dashboard, Runs, Agents, Playground, Settings, and filtered run views.
+A ⌘K hint badge is shown in the header bar on medium+ screens.
+
+* feat(ui): run comparison page — side-by-side step diff with divergence highlighting
+
+Adds /runs/compare?a=RUN_ID_1&b=RUN_ID_2 route accessible from the Runs
+page when exactly 2 runs are selected via "Compare Selected". The page
+shows dual summary cards (status, step count, failures, duration delta),
+a step-by-step alignment table with same/diverged/extra annotations, and
+a clickable output-diff panel for diverged rows.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): virtual scrolling for trace, HITL approval UI in step detail
+
+- Flatten the recursive RunTrace tree and virtualize with @tanstack/react-virtual
+  for performant rendering of 200+ step traces (overscan=20, estimateSize=28px)
+- Extract TraceRow as a standalone component; preserve all visual logic
+  (step numbers, depth indentation, connector glyphs, status dots, bars,
+  group-count badges, relative-start times, group separators)
+- Add HITL approval card in StepDetail: shows when execution.status === "waiting"
+  or approval_request_id is present; displays approval_status badge and
+  approval_requested_at timestamp; renders Approve/Reject buttons when
+  approval_status === "pending", posting to /api/v1/webhooks/approval-response
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* feat(ui): SSE live updates, connection indicator, webhook delivery status in step detail
+
+- Add useSSEQuerySync hook that subscribes to execution and node SSE
+  channels and invalidates TanStack Query caches on every event, so
+  Runs, Run DAG, and Step Detail pages auto-refresh without polling
+- Mount useSSEQuerySync once in AppLayout for app-wide coverage
+- Add SSE connection status indicator (Live / Reconnecting / Disconnected)
+  to HealthStrip so users know whether real-time updates are active
+- Add Webhook Delivery collapsible section to StepDetail showing per-event
+  HTTP status, delivery time, and a Retry button for failed deliveries;
+  only rendered when webhook_registered or webhook_events are present
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+* fix(ui): remove double scroll in trace, add I/O diff to comparison, sticky header
+
+- RunDetailPage: remove ScrollArea wrapper around RunTrace; the virtualizer
+  already owns its scroll container (h-full overflow-auto), so the outer
+  ScrollArea caused scroll-inside-scroll
+- ComparisonPage: replace status-only OutputDiff with StepDiff that fetches
+  both executions via useStepDetail and renders input/output JSON side-by-side
+  with error highlighting; all rows are now clickable (not just diverged)
+- ComparisonPage: make summary-cards section sticky (top-0 z-10) so it stays
+  visible while scrolling the step comparison table
+
+* fix(ui): graph view — edges visible, node clicks populate right panel instead of sidebar
+
+- Destructure onExecutionClick in WorkflowDAGViewerInner (was defined in
+  props interface but never used inside the component)
+- handleNodeClick and handleDeckNodeClick now call onExecutionClick when
+  provided, falling back to the internal NodeDetailSidebar only when no
+  parent handler is registered (preserves legacy WorkflowDetailPage usage)
+- Suppress internal NodeDetailSidebar render when onExecutionClick is set
+- FloatingEdge: remove early return null when useInternalNode yields
+  undefined; fall back to React Flow's default handle coordinates
+  (sourceX/sourceY/targetX/targetY) so edges render before the first
+  measure cycle completes
+- Fix duplicate SVG marker ids by scoping id to the edge id, preventing
+  cross-edge marker conflicts
+
+* fix(ui): graph edges invisible — wrap HSL vars in hsl() for SVG stroke attributes
+
+* web(ui): revamp layout, filters, and health strip
+
+- Update AppLayout, AppSidebar, and global styles
+- Add filter combobox components and popover
+- Refresh Agents and Runs pages with new filtering UX
+- Adjust HealthStrip; update client dependencies
+
+* feat(web): UI revamp — components, pages, logos, and shared UI utilities
+
+- Refresh control-plane web client pages and execution/reasoner components
+- Add logo assets, pagination, JSON highlight, endpoint icons, reasoner combobox
+- Add reasonerCompareExtract util; update Tailwind and global styles
+- Track Cursor continual-learning hook state artifact
+
+* feat(ui): inset shell, unified theme tokens, runs workflow updates
+
+- Sidebar inset variant with rounded rail; SidebarInset overflow/min-h-0; single main landmark
+- Dark neutrals use shared --shell-h/--shell-s; accent isolated to --brand-* (logo, rings, sidebar-primary)
+- Run detail trace/step UI, executions API/handler, scroll-area, ui-revamp docs
+
+* fix(web-ui): run detail workflow graph renders with valid React Flow bounds
+
+- Replace embedded WorkflowGraphViewport absolute inset-0 with flex layout so
+  the pane gets non-zero height in the document flow (fixes xyflow error #004).
+- Give flow containers explicit minHeight/width/flex and pass width/height
+  styles into ReactFlow and VirtualizedDAG.
+- Defer initial fitView/setViewport until after nodes commit (double rAF).
+- Reset viewport/layout only on workflow id change, not first mount; RunDetail
+  passes stable workflowId, key=runId, and graph column flex/min-height.
+
+* feat(ui): runs/step detail, DAG polish, execution APIs, provenance card
+
+- Backend: UI executions and workflow DAG handler updates.
+- Web: RunsPage, StepDetail, StepProvenanceCard; WorkflowNode and AgentLegend tweaks.
+- Client types and executions/vc API services aligned with server payloads.
+- Cursor continual-learning hook state snapshot.
+
+* feat(web): workflow DAG controls, dashboard/settings polish, runs query updates
+
+- Add WorkflowGraphControls and integrate with WorkflowDAG
+- Update AppLayout, AgentLegend, DeckGLView, VirtualizedDAG
+- Refresh NewDashboardPage, NewSettingsPage, alert component
+- Adjust useRuns hook; sync continual-learning hook state
+
+* feat(web): playground and reasoner combobox updates
+
+- Update PlaygroundPage
+- Refine reasoner-node-combobox UI
+- Sync continual-learning hook state
+
+* feat: access management UI, verify provenance, governance hooks
+
+- Add AccessManagementPage and authorization components (policies, tags, dialogs)
+- Add VerifyProvenancePage and vcApi/did type updates; af verify-provenance CLI + tests
+- Wire DID handlers, UI DID routes, API catalog, and server routes
+- Governance queries/probe/utils; navigation, App, CommandPalette, Agents/Run detail polish
+- Sync continual-learning hook state
+
+* fix(web): app shell, navigation, run detail, verify provenance polish
+
+- Tweak AppLayout and CommandPalette
+- Update navigation config
+- Refine RunDetailPage and VerifyProvenancePage
+- Sync continual-learning hook state
+
+* feat(web): dashboard workload components and Figma/shadcn audit doc
+
+- Add DashboardActiveWorkload, DashboardRunOutcomeStrip, dashboardRunUtils
+- Refactor NewDashboardPage; remove NewDashboardPage.tail.tsx
+- Update client package.json and pnpm-lock.yaml
+- Add docs/FIGMA_SHADCN_AUDIT.md
+- Sync continual-learning hook state
+
+* style(web): broad UI polish across shell, tables, DAG, and design tokens
+
+- Refine AppLayout, sidebars, navigation, and global index.css / Tailwind config
+- Update executions tables, health strip, run trace, step detail, provenance card
+- Polish WorkflowDAG components and workflow dashboard panels
+- Refresh shadcn-style UI primitives (badge, button, drawer, sidebar, etc.)
+- Add copy-identifier-chip and entity-tag components
+- Touch dashboard, authorization, and key pages (agents, runs, playground, etc.)
+- Extend FIGMA_SHADCN_AUDIT.md; sync continual-learning hook state
+
+* chore: remove internal UI planning docs and stray tooling files
+
+Drop docs/ui-revamp and embedded client audit notes from the branch;
+surface product direction in the PR instead. Remove accidentally tracked
+.agit index and Claude worktree pointer; add ignore rules.
+
+* fix: address review findings across Go handlers, TS SDK, and web UI
+
+Multi-pass code review surfaced 60 issues across security, code quality,
+performance, API design, frontend, and test coverage. This commit fixes
+the critical, high, and medium severity items:
+
+- Go: fix ValidComponents count, immutable mergeDIDBundle, empty-DID guard,
+  remove debug fmt.Printf, return 422/413 on verify-audit endpoints
+- TS SDK: fix Audio.fromFile format detection (in→includes), imageFromBuffer
+  default mimeType, remove unnecessary async on fromUrl methods
+- Web: add top-level ErrorBoundary, limit auto-reset to one attempt,
+  DEV-gate SSE console.log, opt-in events accumulation, extract
+  SortableHead component, hoist Intl.RelativeTimeFormat, guard bulk
+  cancel async handler, add keyboard a11y to table rows, convert
+  sidebar nav to Link elements, wrap DAG in ErrorBoundary, fix
+  HealthStrip false-healthy default
+
+* fix: simplify review fixes — stale state, import style, destructuring, parallel cancel
+
+- ErrorBoundary: use functional setState in auto-reset timer to avoid
+  stale closure; also clear errorInfo/errorId on auto-reset
+- RunDetailPage: use @/ alias for ErrorBoundary import (consistency)
+- useSSE: move trackEvents into existing destructuring block
+- RunsPage: parallelize bulk cancel with Promise.all instead of sequential loop
+
+* refactor: extract shared handler, reuse SortableHeaderCell, consolidate formatRelativeTime
+
+- Go: extract HandleVerifyAuditBundle into handlers/verify_audit.go,
+  both DIDHandlers.VerifyAuditBundle and DIDHandler.VerifyAuditBundleHandler
+  now delegate to the shared function (removes 30+ lines of duplication)
+- Web: replace local SortableHead in RunsPage with shared SortableHeaderCell
+  from CompactTable.tsx (reuses existing exported component)
+- Web: add formatCompactRelativeTime to utils/dateFormat.ts and replace 5
+  local copies across AgentsPage, NodesPage, CompactReasonersStats,
+  CompactWorkflowSummary, and ExecutionTimeline
+
+* fix: move ErrorBoundary inside Router to preserve routing context
+
+* style(web): redesign sign-in page with shadcn components and app branding
+
+- AuthGuard: replace raw HTML inputs/button with shadcn Card, Input,
+  Button, Alert; add app logo (light/dark), icon-prefixed fields
+  (KeyRound, ShieldCheck), Loader2 spinner, proper labels for a11y,
+  and friendlier error messages
+- AuthContext: replace plain "Loading..." text with a styled spinner
+  and "Connecting…" label matching the app's design tokens
+
+* fix: resolve all tsc -b strict build errors for CI
+
+- App.tsx: remove 8 unused page imports
+- DeckGLView.tsx: narrow zoom type (number | [number, number]) before arithmetic
+- VirtualizedDAG.tsx: cast nodeTypes/edgeTypes to satisfy xyflow strict types
+- WorkflowDAG/index.tsx: cast DeckGL node click handler and component types
+- AgentLegend.tsx: restore main's version, export layout types for callers
+- AccessRulesTab.tsx, PolicyFormDialog.tsx: remove invalid weight prop from lucide icons
+- reasoner-node-combobox.tsx: add boolean coercion for string | boolean
+- EnhancedDashboardPage.tsx: change "warning" to valid "degraded" badge variant
+- ExecutionDetailPage.tsx: create ExecutionHeader component, remove unused import
+- NodeDetailPage.tsx: restore main's version with latestEvent bindings
+- reasonerCompareExtract.ts: fix number | boolean comparison with explicit ternary
+- Add stub modules for DIDInfoModal, mcp/index, animated-tabs
+
+* security: prevent SSRF in DID resolution and custom resolver endpoints
+
+- Add safeHTTPClient with DialContext that resolves DNS and blocks
+  private/loopback/link-local IPs (10/8, 172.16/12, 192.168/16,
+  127/8, 169.254/16, ::1, fc00::/7, fe80::/10)
+- Add validateExternalURL requiring HTTPS scheme
+- Apply to resolveWebDID and resolveFromCustom (CodeQL critical findings)
+- Add io.LimitReader (2 MiB) on all external response bodies to prevent
+  memory exhaustion from malicious DID document hosts
+- Set 10s client timeout and 5s dial timeout
+
+* chore: stacked branch for UI live-update follow-up work
+
+Establishes a PR stack on top of #330. No functional changes yet.
+
+* feat(web): unified SSE sync and adaptive polling for live UI
+
+- SSESyncProvider runs executions, nodes, and reasoners SSE once; invalidates
+  runs, run-dag, step-detail, agents, reasoners, and dashboard-summary
+- HealthStrip uses shared connection state; Refresh resyncs when streams are down
+- Faster TanStack refetch intervals when SSE is disconnected (runs, agents,
+  LLM/queue, dashboard summary); explicit run list intervals tighten too
+- useRunDAG/useStepDetail poll active steps more often, especially without SSE
+- AllReasonersPage uses React Query with SSE-driven invalidation and 6s fallback
+
+* fix(web): match polling and badges to the SSE channel that feeds each view
+
+- useRuns, run DAG/step detail, dashboard summary, LLM/queue: gate on execConnected
+- useAgents: gate on nodeConnected
+- All Reasoners: fallback poll when neither node nor reasoner stream is up
+- HealthStrip Live/Refresh tied to execution stream (runs/steps)
+
+* agit sync
+
+* agit sync
+
+* fix(web): tighten live update gating
+
+* feat: agent node process logs (Python NDJSON, CP proxy, UI panel)
+
+- Document NDJSON v1 contract and UI proxy path in docs/api/AGENT_NODE_LOGS.md
+- Python SDK: ring buffer, stdio tee, GET /agentfield/v1/logs with internal bearer
+- Control plane: proxy GET /api/ui/v1/nodes/:nodeId/logs, node-log-proxy settings GET/PUT
+- Web UI: NodeProcessLogsPanel on Agents expanded row and Node detail Logs tab;
+  Settings tab for proxy limits using existing shadcn cards and patterns
+
+* docs: document node log proxy and agent log env vars in .env.example
+
+* fix: align .env.example log vars with Python node_logs.py
+
+* agit sync
+
+* agit sync
+
+* chore: log-demo compose, UI proxy functional test, example heartbeats
+
+- Makefile targets log-demo-up / log-demo-down
+- docker-compose.log-demo.yml + Node log-demo agent Dockerfile
+- test_ui_proxies_node_process_logs exercises GET /api/ui/v1/nodes/:id/logs
+- Python + Go demo agents emit periodic stdout/stderr for UI verification
+- Trim unused notify from Go process log ring; drop unused TS import
+
+* fix(docker): wait for CP health before log-demo agents start
+
+Add wait-control-plane (curl with retries) and depends_on completed_successfully
+so Python/Go/Node demo agents do not register before the API is ready.
+Set restart: unless-stopped on demo agents. Document behavior in LOG_DEMO.md.
+
+* feat(scripts): host log-demo stack when Docker is unavailable
+
+Add run-log-demo-native.sh / stop-log-demo-native.sh with writable paths
+(env overrides for SQLite, Bolt, DID keystore under /tmp/agentfield-log-demo).
+Makefile targets log-demo-native-up/down. Document in LOG_DEMO.md.
+
+Fixes local runs using agentfield-test.yaml which points storage at /data.
+
+* feat(ui,sdks): process log filters, structured rows, NDJSON level/source
+
+- AgentsPage: full-width tab bar aligned with node detail (icons, muted track).
+- NodeProcessLogsPanel: stream segmented control (All/Stdout/Stderr with counts),
+  text search across line/seq/level/source, rows show local time + date when not
+  today, seq, stream/level badges, optional source line; stderr row tint.
+- NodeLogEntry type: optional level, source.
+- Python/Go/TypeScript SDKs: emit level (info/error/log) and source=process
+  for stdio capture; document in AGENT_NODE_LOGS.md.
+
+* fix: tighten audit verification and multimodal IO
+
+* feat(ui): agents page heading, nav labels, compact responsive logs
+
+- Page h1 Agent nodes & logs; sidebar/command palette use Agent nodes
+- Agents row: terminal shortcut + controlled tabs; breadcrumb route name
+- NodeProcessLogsPanel: responsive header toolbars, compact log grid,
+  hide redundant level badges, optional native demo scripts unchanged
+
+* fix(sdk/python): drop unused Generator import (ruff F401)
+
+Unblocks Python SDK CI lint-and-test job.
+
+* fix(sdk/ts): qualify Express Response in flush cast (TS2352)
+
+Bare Response resolved to DOM Fetch Response; use import('express').Response.
+
+* fix(ci): harden DID fetches and stabilize node log proxy test
+
+* agit sync
+
+* fix(web): avoid format strings in node action logs
+
+* fix(cli): keep VC verification offline-only
+
+* fix(tests): write node log marker into process ring
+
+* docs: add execution observability RFC
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* agit sync
+
+* feat: add execution logging transport
+
+* feat(py): add structured execution logging
+
+* agit sync
+
+* feat(web): unify execution observability panel
+
+* Remove local plandb database from repo
+
+* fix demo execution observability flow
+
+* refactor run detail into execution and logs tabs
+
+* refine execution logs density
+
+* agit sync
+
+* polish execution logs panel header
+
+* refine raw node log console
+
+* polish process log filter toolbar
+
+* standardize observability spacing primitives
+
+* agit sync
+
+* test execution observability in functional harness
+
+* fix: security hardening for execution logs and process log auth
+
+- Use constant-time comparison (crypto/subtle) for bearer token
+  validation in Go SDK process logs endpoint
+- Add MaxBytesReader (10 MiB) to execution logs ingestion handler
+  to prevent memory exhaustion from oversized payloads
+- Remove accidentally committed .cursor/ IDE state files
+- Add .cursor/ to .gitignore
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(sdk-python): forward structured execution logs to control plane
+
+The Python SDK logger only wrote structured logs to stdout, unlike the
+Go SDK which also dispatches them to POST /api/v1/executions/:id/logs.
+This caused the Logs tab in the UI to always show empty for Python agents.
+
+- Add post_execution_logs() to AgentFieldClient
+- Add _dispatch_to_cp() in logger to async-POST records to the CP
+- Wire the client into the logger during Agent init via set_cp_client()
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(web): health strip counts agents with lifecycle_status ready as online
+
+The HealthStrip filtered on health_status === "ready" | "active" but
+agents register with lifecycle_status: "ready" and health_status may
+be "inactive" or "unknown". This caused "0/5 online" while the table
+showed all agents as ready with green dots.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(ui): restore compact AgentLegend, fix runs row click and copy feedback
+
+- Restore AgentLegend from pre-regression (commit 32081e3): compact embedded
+  bar with agent color dots, Popover agent picker, Maximize2 expand-to-fullscreen
+  button, and inline viewport controls (fit/zoom in/zoom out)
+- Fix runs table row click: remove stopPropagation on Target cell so clicking
+  anywhere on the row navigates to run detail
+- Add copy feedback on run ID chip: show Check icon + green border for 2s after
+  copying, matching the standard CopyButton pattern used elsewhere
+
+* fix: approval flow, SSE connection exhaustion, and stale execution sync
+
+Approval flow fixes:
+- Allow timeout→running state transition so approvals resolve even
+  after the stale reaper marks an execution as timed out
+- Webhook handler no longer rejects approvals when execution was
+  reaped but approval_status is still pending
+- Stale reaper now syncs both executions and workflow_executions
+  tables in the same transaction to prevent split-brain status
+- Reaper skips executions with approval_status=pending (legitimately
+  waiting for human input, not stale)
+- Approve/Reject buttons show loading state, handle errors, and
+  invalidate queries to refresh the UI
+
+SSE connection exhaustion fix:
+- Disable node and reasoner SSE streams to stay within browser
+  HTTP/1.1 per-origin connection limit (6); queries already include
+  adaptive polling fallback
+- Execution events SSE handler sends initial connected event so
+  browser EventSource detects the open immediately
+- Execution log SSE stream checks terminal status on startup and
+  each heartbeat, closing gracefully instead of hanging forever
+- Heartbeats no longer reset the idle timer (was preventing timeout)
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(web): handle agent tag approval when no proposed tags exist
+
+The ApproveWithContextDialog opened an empty tag selector with a
+disabled Approve button when the agent had no proposed_tags. Now it
+shows an "Approve Agent" flow explaining the agent registered without
+tags and lets the admin approve the registration directly.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(web): pre-fill playground input when replaying a run
+
+The Replay button navigated to the playground without passing the
+execution's input data, leaving the input editor empty. Now it passes
+input_data via React Router location state, and the playground reads
+it to seed the JSON editor on mount.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(web): pre-fill playground input when replaying a run
+
+The Replay button fetches execution details to get the original
+input_data before navigating to the playground. The playground reads
+replay input from location state and skips the schema-based empty
+seed when replay data is present.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com> (3d2e4d7)
+
+- Feat(observability): enrich execution facts for downstream analysis (#341)
+
+* feat: enrich execution observability facts
+
+* test: cover execution observability contract
+
+* test: add functional execution webhook coverage
+
+* fix: use uvicorn websockets sansio (4a04419)
+
+- Feat: execution resilience - LLM health, concurrency limits, retry, log streaming (#319)
+
+* feat: LLM health monitoring, concurrency limits, execution retry, and log streaming (#318)
+
+Add execution resilience features to address stuck job detection and recovery
+scenarios reported in #316:
+
+- LLM health monitor with circuit breaker (closed/open/half-open states)
+- Per-agent concurrency limits with atomic counters
+- Stale execution auto-retry with configurable max retries
+- Real-time execution log streaming via SSE
+- LLM health API endpoint for UI visibility
+- E2E resilience test suite with mock LLM server
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* feat: error classification, queue visibility, and comprehensive E2E tests
+
+Add structured error diagnostics so users can distinguish WHY executions
+fail (LLM down vs agent crash vs timeout vs unreachable), expose queue
+depth for concurrency monitoring, and rewrite E2E tests to validate real
+failure scenarios from #316.
+
+- Error classification: all execution failures now include error_category
+  (llm_unavailable, concurrency_limit, agent_timeout, agent_unreachable,
+  agent_error, bad_response, internal_error) in HTTP responses and
+  execution records
+- Queue status endpoint: GET /api/ui/v1/queue/status shows per-agent
+  concurrency slot usage, max config, and total running count
+- E2E tests expanded from 13 to 27 assertions across 15 test groups:
+  concurrency limiter proven with parallel slow requests (429 rejection),
+  agent kill/restart detection, crash error visibility, timeout behavior,
+  execution record error details, queue depth endpoint validation
+- Test reliability: stale DB cleanup, staggered agent starts, proper
+  output suppression, targeted process wait
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: address PR 319 resilience review issues
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (93dc989)
+
+- Feat(sdk/go): add Codex and Gemini harness providers (#305)
+
+* feat(sdk/go): add Codex and Gemini harness providers with BuildProvider factory
+
+Implements the remaining two CLI-based harness providers for the Go SDK,
+completing the feature parity with Python/TS implementations.
+
+- codex.go: Codex provider using `codex exec --json` with JSONL event parsing
+- gemini.go: Gemini provider using `gemini -p` with plain text output
+- factory.go: BuildProvider() factory for all 4 providers
+- Refactored runner.buildProvider() to delegate to BuildProvider()
+- Full test coverage for both providers and the factory
+
+Fixes #207
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: correct install URLs for Codex and Gemini providers
+
+Codex: https://github.com/openai/codex
+Gemini: https://github.com/google-gemini/gemini-cli
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: Codex JSONL parser — handle thread_id and item text fields
+
+Real Codex CLI uses thread_id (not session_id) in thread.started events
+and text (not content) in agent_message items. Fixed parser to handle
+both field names. Added integration test (build tag: integration).
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* chore: add .opencode/ to gitignore
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* test: add integration tests for Codex and Gemini providers
+
+Run with: go test ./harness/ -tags=integration
+Requires: codex CLI auth'd, GEMINI_API_KEY env var set with
+gemini settings.json auth type set to gemini-api-key.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (94c67c1)
+
+- Feat: add community project submission issue template (5434573)
+
+- Feat(typescript sdk): Add history() method for querying past memory events (#300)
+
+* feat(typescript sdk): Add history() method for querying past memory events
+
+Signed-off-by: Roberto Robles <ro-robles@pm.me>
+
+* fix(typescript sdk): handle null response in history() when no events match
+
+The server returns `null` instead of `[]` for empty result sets, causing
+a TypeError when callers access the return value. Use nullish coalescing
+to always return an array.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Signed-off-by: Roberto Robles <ro-robles@pm.me>
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (fc69fee)
+
+- Feat: extend permission middleware to memory endpoints (#285) (#289)
+
+* feat: extend permission middleware to memory endpoints with scope ownership validation (#285)
+
+Add MemoryPermissionMiddleware that enforces tag-based access policies and
+scope ownership checks on all memory routes, achieving permission parity
+with the existing execute endpoint protection. Wire up AccessControlMetadata
+fields (RequiredRoles, TeamRestricted, AuditAccess) and add comprehensive
+cross-agent isolation tests.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* feat: extend permission middleware to memory endpoints with scope ownership validation (#285)
+
+Add MemoryPermissionMiddleware that enforces tag-based access policies and
+scope ownership validation on all memory routes (key-value, vector, events).
+Wire up AccessControlMetadata fields (RequiredRoles, TeamRestricted, AuditAccess)
+on Memory records. Add cross-agent isolation tests verifying agents cannot
+read/write/delete other agents' scoped memory.
+
+Key decisions:
+- Fail closed on agent resolution errors (deny access if identity cannot be verified)
+- Only use ApprovedTags for authorization (not ProposedTags)
+- Unknown scopes are denied by default
+- Global scope remains open by design
+- Use stdlib strings.Split/TrimSpace instead of custom implementations
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: handle unregistered agents in memory permission middleware
+
+When an agent provides identity headers but isn't registered as a node
+in storage, GetAgent returns an error. Previously this blocked all
+non-global memory access for unregistered agents. Now we skip tag-based
+policy evaluation (no tags to evaluate) while still enforcing scope
+ownership validation.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (08dfbfe)
+
+- Feat: CLI agent mode — af agent subcommand with structured JSON output (#284)
+
+* feat: CLI agent mode with structured JSON output and DX fixes
+
+Implements af agent subcommand (Phase 4 of the Agentic API Layer epic):
+- af agent status/discover/query/run/agent-summary/kb/batch subcommands
+- All output is structured JSON with ok/data/error/meta envelope
+- Structured JSON help (af agent help) for LLM-parseable discovery
+- Error responses include hint field for self-correction
+- Global --server/-s, --api-key/-k, --output/-o, --timeout/-t flags
+- Multi-control-plane targeting via --server flag or AGENTFIELD_SERVER env
+- HTTP proxy to /api/v1/agentic/* endpoints with latency tracking
+
+DX fixes:
+- Replace 4 hardcoded AGENTFIELD_SERVER_URL=http://localhost:8080 with
+  resolveServerURL() that reads AGENTFIELD_SERVER/AGENTFIELD_SERVER_URL env
+- Python SDK: agentfield_server param now defaults to None and resolves from
+  AGENTFIELD_SERVER/AGENTFIELD_SERVER_URL env vars before falling back to
+  http://localhost:8080
+
+Closes #281, closes #282
+
+* feat: add agent mode discovery hint to CLI help and error output
+
+When an AI agent runs 'af help', 'af badcommand', or 'af --badflags',
+the output now includes a hint: AI Agent? Run "af agent help" for
+structured JSON output. This creates a self-correcting loop — agents
+that accidentally invoke the human CLI are guided to agent mode.
+
+* feat: structured JSON errors for unknown CLI commands
+
+When agents run wrong commands (af badcommand or af agent badcommand),
+they now receive parseable JSON errors with hint fields and available
+command lists instead of Cobra's default human-oriented text.
+
+* fix: route `af agent help` to structured JSON help output
+
+The RunE handler's ArbitraryArgs intercepted "help" as an unknown
+subcommand before cobra could route to SetHelpCommand. Handle it
+explicitly so `af agent help` matches `af agent` behavior.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (72ec100)
+
+- Feat: Agentic API Layer — Smart 404, Discovery, Query, Knowledge Base (#283)
+
+* feat: add agentic API layer — smart 404, discovery, query, KB
+
+Transform the control plane from a pure orchestration server into a
+knowledge-serving platform for AI agent consumers.
+
+Phase 1: API Catalog + Smart 404
+- In-memory registry of all 80+ endpoints with metadata
+- Fuzzy matching via Levenshtein + segment overlap scoring
+- Auth-aware filtering (public/api_key/admin/connector)
+- Smart 404 replaces useless error with endpoint suggestions
+
+Phase 2: Operator + Autonomous Endpoints
+- GET /agentic/discover — search endpoints by keyword/group/method
+- POST /agentic/query — unified query for runs/executions/agents/workflows/sessions
+- GET /agentic/run/:id — complete run overview with DAG, agents, notes
+- GET /agentic/agent/:id/summary — agent info + 24h metrics
+- POST /agentic/batch — up to 20 concurrent operations
+- GET /agentic/status — system health overview
+
+Phase 3: Knowledge Base API (public, no auth)
+- 40 articles across 6 topics compiled into binary
+- GET /agentic/kb/topics — list topics
+- GET /agentic/kb/articles — search/filter articles
+- GET /agentic/kb/articles/:id — full article content
+- GET /agentic/kb/guide — goal-oriented reading path
+
+Closes #275 #276 #277 #278 #279 #280
+Epic: #282
+
+* test: add functional tests for agentic API layer
+
+3 test suites, covering:
+
+- API Catalog (16 tests): register, search, fuzzy matching, auth filtering,
+  levenshtein distance, default entries validation
+- Knowledge Base (15 tests): CRUD, topic listing, search by topic/SDK/difficulty/
+  keyword, guide generation, default content validation
+- Agentic Handlers (20 tests): discover, smart 404, KB topics/articles/guide,
+  batch operations, response envelope, auth level extraction, helpers
+
+All tests use httptest + gin test mode — no external dependencies.
+
+* feat: enrich 401 and 404 responses with discovery hints
+
+- 401 now includes a `help` block pointing agents to:
+  - KB endpoints (public, no auth)
+  - API discovery (requires auth)
+  - Live agent discovery via /discovery/capabilities
+  - Auth instructions (X-API-Key, Bearer, query param)
+
+- Smart 404 `help` block now references:
+  - /agentic/discover — search API endpoints
+  - /discovery/capabilities — list running agents and reasoners
+  - /agentic/kb/topics — knowledge base
+  - /agentic/kb/guide — goal-oriented learning path
+
+- Discover response includes `see_also` pointing to
+  /discovery/capabilities (live agents) and KB
+
+An unauthenticated agent now gets immediate actionable guidance
+instead of a dead-end error.
+
+* fix: update auth middleware test for enriched 401 response
+
+The 401 response now includes a `help` object (map[string]string)
+alongside the string fields. The test was unmarshaling into
+map[string]string which fails on nested objects.
+
+Changed to map[string]interface{} and added assertion that `help`
+field is present in the 401 response. (ee32d1b)
+
+- Feat(sdk-go): add harness package for CLI-based coding agent dispatch (#271)
+
+* feat(sdk-go): add harness package for CLI-based coding agent dispatch
+
+Implements the Go equivalent of the Python SDK's harness subsystem,
+enabling structured output extraction from external coding agents
+(opencode, claude-code) via subprocess execution.
+
+New harness/ package:
+- Provider interface with OpenCode and ClaudeCode implementations
+- Runner with schema validation, retry logic, and transient error handling
+- Schema utilities: prompt suffix generation, cosmetic JSON repair,
+  stdout fallback extraction, follow-up prompt construction
+- CLI subprocess execution with timeout and environment management
+
+Agent integration:
+- HarnessConfig on agent.Config for default provider settings
+- agent.Harness() method mirrors Python SDK's .harness() API
+- Lazy-initialized runner with per-call option overrides
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(harness): correct CLI flags for opencode/claude-code and add demo
+
+Provider fixes validated through end-to-end testing:
+- opencode: use -p flag (not "run" subcommand), -c for cwd, -q for
+  quiet mode; model is config/env-based not a CLI flag
+- claude-code: unset CLAUDECODE env var to allow spawning from within
+  a Claude Code session
+- cli: support unsetting env vars (empty value = remove from env)
+
+Add examples/go_harness_demo with structured output extraction test
+for both providers.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix(sdk-go/harness): address code review findings — security, quality, SDK conventions
+
+- Remove dead package-level sync.Once/Runner variables (cross-agent contamination risk)
+- Guard CleanupTempFiles against '.' directory (destructive file deletion)
+- Replace bare log.Printf with configurable Runner.Logger (matches SDK convention)
+- Fix context cancellation leak in schema retry loop
+- Fix StructToJSONSchema to use reflect for proper type inference
+- Replace bubble sort with sort.Slice in extractJSONBlocks
+- Handle json.MarshalIndent errors in BuildPromptSuffix/BuildFollowupPrompt
+- Move isExecNotFound/truncate helpers from opencode.go to cli.go
+- Add provider name constants (ProviderOpenCode, ProviderClaudeCode)
+- Document env empty-string-means-unset convention
+- Document mergeOptions zero-value override semantics
+- Document cosmeticRepair brace-counting limitations
+- Tighten writeSchemaFile directory permissions (0o755 → 0o700)
+- Remove unused variable in runner_test.go
+- Update .env.example to use generic placeholders
+- Add loadEnv production-use note in demo
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (eaaed38)
+
+- Feat(harness): parse real cost from opencode JSON output (#269)
+
+* fix: capture stderr from Claude Code CLI for error diagnosis
+
+The ClaudeCodeProvider was not passing a stderr callback to
+ClaudeAgentOptions, so when the claude CLI exited with code 1,
+the actual error message was lost. Logs only showed "Command
+failed with exit code 1" with no actionable details.
+
+Now passes a stderr callback that collects output and includes
+it in both the error log and the RawResult.error_message field.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: set stderr callback on opts object, not agent_options dict
+
+Avoids test assertion failures caused by unexpected 'stderr' key
+in the agent_options dictionary.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* feat(harness): parse real cost from opencode JSON output
+
+Use -f json flag when invoking opencode CLI and parse cost,
+prompt_tokens, and completion_tokens from the response. Falls back
+to estimate_cli_cost() for older opencode versions that don't
+include metrics in their JSON output.
+
+Depends on: opencode-ai/opencode#TBD
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (b1a023d)
+
+- Feat(sdk): surface cost_usd and usage from .ai() responses (#264)
+
+* feat(sdk): surface cost_usd and usage from .ai() responses
+
+MultimodalResponse now exposes cost_usd (estimated via litellm) and
+usage (token counts) extracted from litellm response objects.  This
+enables downstream consumers like pr-af to track .ai() call costs
+instead of hardcoding them to zero.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: remove unused pytest import to pass linting
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (3944cb6)
+
+- Feat: add token-based cost estimation for CLI harness providers (#260)
+
+OpenCode, Gemini, and Codex providers now estimate LLM cost using
+litellm's pricing database, so HarnessResult.cost_usd is no longer
+always None for subprocess-based providers. This enables budget
+enforcement and cost reporting in downstream consumers like pr-af.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (8b94345)
+
+- Feat: database-backed configuration storage (#254)
+
+* feat: database-backed configuration storage
+
+Add ability to store and manage configuration files in the database
+instead of (or in addition to) YAML files on disk. This enables
+remote config management via the connector/SaaS flow.
+
+- Add ConfigStorageModel with versioning and audit fields
+- Implement SetConfig/GetConfig/ListConfigs/DeleteConfig in storage layer
+- Add config CRUD API endpoints (GET/PUT/DELETE /api/v1/configs/:key)
+- Add connector-scoped config routes gated by config_management capability
+- Add AGENTFIELD_CONFIG_SOURCE=db flag to load config from database at startup
+- Add Goose migration 028_create_config_storage.sql
+- Works on both SQLite and PostgreSQL backends
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* feat: add hot-reload endpoint for database-backed configuration
+
+Adds POST /configs/reload endpoint that re-applies database config
+to the running control plane without requiring a process restart.
+Only active when AGENTFIELD_CONFIG_SOURCE=db is set.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: merge DB config fields individually to prevent zeroing out defaults
+
+The ExecutionCleanup struct was being replaced wholesale when only
+RetentionPeriod was set, zeroing out CleanupInterval and causing a
+panic (non-positive interval for NewTicker). Now merges each field
+individually. Also excludes connector config from DB merge since
+token and capabilities are security-sensitive.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: address critical security and correctness issues in config storage
+
+- Add 1MB body size limit to SetConfig to prevent DoS via unbounded reads
+- Add sync.RWMutex to protect config during hot-reload (prevents data race)
+- Replace fragile string error check with errors.Is(err, sql.ErrNoRows)
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (7ac9c87)
+
+- Feat: External Cancel/Pause/Resume Execution (Epic #238) (#246)
+
+* feat(state-machine): add paused execution state and transitions (#239)
+
+- Add ExecutionStatusPaused constant and aliases to pkg/types/status.go
+- Add paused state transitions in execution_state_validation.go:
+  running→paused, paused→running, paused→cancelled
+- Update SQLite CHECK constraints in local.go
+- Add PostgreSQL migration 027_add_paused_execution_status.sql
+- Add ExecutionPaused/Resumed/Cancelled event types to event bus
+- Add publish helpers for new event types
+- Update deriveOverallStatus to handle paused workflows
+- Update frontend CanonicalStatus type, theme, badge, hex colors for paused
+
+Part of epic #238 — External Cancel/Pause Execution
+
+* feat(api): add POST /executions/:id/cancel endpoint (#240)
+
+- CancelExecutionHandler: updates execution + workflow execution to cancelled
+- Emits ExecutionCancelled event via event bus
+- Stores workflow execution event for audit trail
+- Supports optional reason field in request body
+- Returns previous_status, new status, and cancelled_at timestamp
+- Rejects cancel on terminal states (409 Conflict)
+- Returns 404 for non-existent executions
+- Registers route under agentAPI group
+- Comprehensive tests: state transitions, reason handling, edge cases
+
+* feat(api): add POST /executions/:id/pause and /resume endpoints (#241)
+
+- PauseExecutionHandler: transitions running -> paused
+- ResumeExecutionHandler: transitions paused -> running
+- Both update execution record + workflow execution atomically
+- Emit ExecutionPaused/ExecutionResumed events via event bus
+- Store workflow execution events for audit trail
+- Support optional reason field in request body
+- Strict state validation: pause only from running, resume only from paused
+- Returns previous_status, new status, and paused_at/resumed_at
+- Register routes under agentAPI group
+- Comprehensive tests using existing testExecutionStorage helpers
+
+* feat(cli): add af execution cancel|pause|resume commands (#244)
+
+- NewExecutionCommand with cancel, pause, resume subcommands
+- Shared executionActionOptions/executionActionConfig for DRY implementation
+- Supports --server, --token, --timeout, --json, --reason flags
+- Human-readable output by default, raw JSON with --json
+- User-friendly error messages for 404/409 status codes
+- Registered under RootCmd in root.go
+
+* feat(executor): enforce cancel/pause state in DAG executor (#242)
+
+- callAgent checks execution status before making HTTP call
+- Cancelled executions skip agent call and return early
+- Paused executions block in waitForResume using event bus pattern
+- waitForResume unblocks on ExecutionResumed (return nil) or
+  ExecutionCancelledEvent (return error)
+- Race condition guard: checks status before subscribing to event bus
+- asyncExecutionJob.process also checks status before callAgent
+- Tests: cancel skip, pause+resume flow, pause+cancel flow, async job skip
+
+* feat(ui): add cancel/pause/resume controls to workflow header (#243)
+
+- Add Cancel, Pause, Resume buttons to EnhancedWorkflowHeader
+- Cancel uses AlertDialog confirmation (destructive action guard)
+- Pause/Resume use ghost buttons with amber/emerald hover states
+- Mobile-responsive: icon-only on small screens, icon+label on desktop
+- Loading spinners during mutations, all buttons disabled while mutating
+- API client functions in executionsApi.ts for cancel/pause/resume
+- Routes registered under UI API group in server.go
+- NotificationProvider wraps workflow detail page for toast feedback
+- New alert-dialog.tsx component (shadcn/Radix pattern)
+
+* fix(storage): add missing 'waiting' status to SQLite and PostgreSQL CHECK constraints
+
+The 'waiting' status (used by HITL approval flow) was a valid canonical status
+in Go code but was missing from database CHECK constraints. This would cause
+INSERT/UPDATE failures when executions transition to 'waiting' state.
+
+Fixes both SQLite (local.go) and PostgreSQL (migration 027) constraints.
+
+* fix(ui): add paused status to all CanonicalStatus Record maps
+
+WorkflowNode, HoverDetailPanel, StatusSection, EnhancedWorkflowIdentity,
+and ExecutionHistoryList all had Record<CanonicalStatus, ...> maps missing
+the 'paused' entry, causing TypeScript build failures.
+
+* refactor(ui): redesign cancel/pause/resume as icon-only toolbar buttons
+
+Match existing toolbar convention (ghost variant, h-8 w-8, title tooltips).
+Remove text labels and destructive variant to reduce visual weight.
+Add separator between execution controls and view controls.
+Keeps AlertDialog confirmation for cancel safety.
+
+* fix(ui): fix paused priority in deriveOverallStatus and move graph controls to floating toolbar
+
+- Fix deriveOverallStatus() to prioritize paused over running (deliberate user
+  action takes precedence over child execution state)
+- Add 2 test cases for paused priority behavior
+- Move viewMode (Standard/Performance/Debug) and Focus mode from header to
+  bottom-left floating toolbar in graph view
+- Update EnhancedWorkflowDetailPage prop wiring for toolbar migration
+
+* feat(ui): add execution lifecycle controls, live duration, and status filter enhancements
+
+- Redesign CompactExecutionHeader with pause/cancel/resume icon buttons,
+  live elapsed time counter, refresh button, and hover card for secondary
+  details (agent, DID, workflow, input/output sizes)
+- Wrap EnhancedExecutionDetailPage with NotificationProvider for toast
+  notifications on pause/cancel/resume actions
+- Add live elapsed time display to EnhancedWorkflowHeader for running and
+  paused workflows (replaces N/A with real-time counter)
+- Add Paused and Cancelled to STATUS_FILTER_OPTIONS in PageHeader
+- Add paused to statusLabels in CompactWorkflowsTable
+
+* fix(ui): single-line headers and fix unicode triangle rendering
+
+- Convert two-line name+subtitle layout to single-line in both
+  workflow and execution detail page headers
+- Replace HTML entity &blacktriangle; with Unicode ▲ (JSX compat)
+- Replace &bull; separators with Unicode middle dot (·)
+- Remove unused Clock import from CompactExecutionHeader
+- Name appears bold, metadata appears muted on same line
+
+* fix(ui): human-readable durations, visible agent_node_id, LIVE badge → refresh dot
+
+- Replace local formatDuration with shared formatDurationHumanReadable
+  (e.g. 4487.0m → 3d 2h, 74h 43m → 3d 2h)
+- Show agent_node_id as distinct mono chip next to reasoner name
+- Remove standalone LIVE/IDLE badges from both headers
+- Add green pulsing dot on refresh button when execution is live
+- Clean up unused Clock import and underscore unused props
+
+* fix(ui): show agent_node_id in workflow header, remove steps/depth clutter
+
+- Extract root agent_node_id from DAG timeline data
+- Display as mono chip next to workflow name (same style as execution page)
+- Remove 'N steps · depth N' metadata (not useful to users)
+- Keep duration with live indicator and run ID for copying
+- Update mobile row to match desktop layout
+
+* feat(ui): redesign execution and workflow headers into 2-row layout
+
+Restructure both detail page headers from single-row into a
+semantically-organized 2-row layout with proper information hierarchy,
+responsive behavior, and mobile support.
+
+Row 1: status cluster + identity cluster + lifecycle controls
+Row 2: section navigation tabs (absorbed from separate components) + summary metrics
+
+- Rewrite CompactExecutionHeader with status dot, identity chips,
+  tooltips, controlled cancel AlertDialog, and mobile overflow menu
+- Rewrite EnhancedWorkflowHeader with webhook HoverCard, active/failed
+  badges, fullscreen toggle, and graph depth metrics
+- Move tab navigation into headers (remove standalone tab components)
+- Add mobile 3-row stacked layout with DropdownMenu overflow
+- Update both detail pages to pass tab props to headers
+
+* fix(test): resolve data race in execution cleanup test
+
+Use thread-safe syncBuffer for concurrent log writes from cleanup
+goroutine and Stop() goroutine. The bytes.Buffer is not safe for
+concurrent writes, causing race detector failures on CI.
+
+* fix: address code review issues in cancel/pause/resume feature
+
+- Add 24h timeout to waitForResume in async execution path to prevent
+  goroutine leaks when resume/cancel events are never delivered
+- Use unique subscriber IDs (with nanosecond suffix) to prevent event
+  bus collisions when parallel DAG branches wait on same execution
+- Change CancelExecutionHandler to accept ExecutionStore interface
+  instead of storage.StorageProvider for interface segregation
+- Fix pause response Reason field to use *string (matching cancel
+  response) so empty reasons are omitted from JSON via omitempty
+- Remove debug console.log from executionsApi.ts that leaked execution
+  data to browser console in production
+
+* feat(ui): redesign workflow DAG graph toolbar (#248)
+
+* feat(ui): redesign workflow DAG toolbar with unified GraphToolbar component
+
+Replace scattered graph controls (layout buttons, search, center, fit view,
+view mode toggle, focus mode) with a single compact icon-based toolbar.
+
+- Add GraphToolbar component with layout/view mode dropdowns, search, focus,
+  and smart center buttons using Phosphor icons with tooltips
+- Implement wrapped tree layout in LayoutManager for wide-branching DAGs
+  (wraps 50+ siblings into rows of N columns targeting ~1600px width)
+- Remove duplicate mrtree layout (keep Dagre tree as single tree option)
+- Extend WorkflowDAGControls with changeLayout() and onLayoutInfoChange
+- Simplify VirtualizedDAG by removing layout-related props
+- Remove SLOW warning badges, replace with subtle 'slower' text in dropdown
+- Unify default layout to tree for all graph sizes
+
+* fix(ui): clean up dead code and unused props from toolbar redesign
+
+- Delete LayoutControls.tsx (fully replaced by GraphToolbar, zero imports remain)
+- Remove unused isFullscreen prop from EnhancedWorkflowFlowProps and call site
+- Clean blank line artifacts left from removed Panel blocks
+
+* fix(handlers): move state validation inside update callbacks to eliminate TOCTOU race
+
+The cancel/pause/resume handlers previously checked execution state
+before the atomic update callback, allowing concurrent requests to
+slip through. Now the state check happens inside the callback where
+it reads the locked current value, and state-conflict errors are
+properly mapped to 409 Conflict instead of 500.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (56f7f5c)
+
+- Feat: add sec-af autonomous security audit to Built With examples
+
+Adds the AI Security Auditor (sec-af) showcase to the README examples
+table with a custom editorial image and link to github.com/Agent-Field/sec-af.
+
+- Add assets/examples/ai-security-auditor.png showcase image
+- Update README Built With section with new entry, description, and GitHub link (4ee4b0a)
+
+- Feat: native LLM tool-calling support via discover → ai → call pipeline (#228)
+
+* feat: add native LLM tool-calling support via discover → ai → call pipeline (#225)
+
+Add tools= parameter to app.ai() that enables automatic tool-call loops:
+discover available capabilities, convert to LLM tool schemas, dispatch
+calls via app.call(), and feed results back until the LLM produces a
+final response.
+
+Python SDK:
+- New tool_calling module with capability-to-schema converters
+- Tool-call execution loop with multi-turn support
+- Progressive discovery (lazy schema hydration)
+- Guardrails (max_turns, max_tool_calls)
+- Per-call observability (ToolCallTrace with latency tracking)
+
+Go SDK:
+- Tool types (ToolDefinition, ToolCall) on ai.Request/Response
+- CapabilitiesToToolDefinitions converter
+- ExecuteToolCallLoop on ai.Client
+- AIWithTools convenience method on Agent
+- WithTools option for ai.Request
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(sdk/python): harden tool-calling DX — rate limiting, stream guard, typed response
+
+- Wrap tool-calling LLM calls with rate limiter and model fallbacks
+  (previously bypassed both, causing naked 429 failures in production)
+- Guard stream=True + tools= with clear ValueError
+- Type tools parameter with Union instead of Any for IDE discoverability
+- Replace monkey-patched _tool_call_trace with typed ToolCallResponse wrapper
+  (exposes .trace, .text, .response with __getattr__ delegation)
+- Track hydration_retries in ToolCallTrace for lazy hydration observability
+- Add ToolCallResponse tests and update existing tests
+
+Refs: #225, #229
+
+* fix(test): update harness schema test to match #230 prompt wording change
+
+* feat: add TS SDK tool-calling parity, lazy hydration, examples, and E2E-tested fixes
+
+- TypeScript SDK: ToolCalling.ts with full discover/filter/lazy/guardrails pipeline
+- TypeScript SDK: lazy hydration uses non-executable selection pass then hydrates
+- TypeScript SDK: OpenRouter/Ollama use .chat() API (not Responses API)
+- TypeScript SDK: ReasonerContext.aiWithTools() for ctx-level tool calling
+- Python SDK: fix invocation_target→call_target conversion in tool dispatch
+- Python/TS: tool name sanitization (colons→double underscores) for LLM compat
+- Examples: Python + TS orchestrator/worker/test covering all Sam's #225 cases
+- E2E tested with GPT-4o-mini and Gemini 2.0 Flash via OpenRouter
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(examples): use ctx.input and app.serve() in TS worker example
+
+SkillHandler receives a single SkillContext arg — input lives on ctx.input,
+not as a second parameter. Also fix app.run() → app.serve() to match the
+TS SDK's actual API. Found during E2E manual testing.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (40638d0)
+
+- Feat(ui): display both did:key and did:web identities (#226)
+
+* feat(ui): display both did:key and did:web identities with clear distinction
+
+The UI previously only showed did:key identifiers, making did:web
+identities invisible to users who need them for JWT and external
+integrations.
+
+Backend: Wire DIDWebService into UI DIDHandler and return did_web
+in the node DID API response.
+
+Frontend: Show both identity types as clearly separated sections
+with descriptive labels — "Cryptographic Identity" (did:key) for
+signing/auth, and "Web Identity" (did:web) for JWT/external use.
+Each has its own copy button and View Document action.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(ui): add did:web to identity API and fix unused import
+
+Wire DIDWebService into IdentityHandlers so the DID Explorer page
+returns did_web alongside did:key. Remove unused Analytics import
+that was breaking CI builds.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (8ffdc28)
+
+- Feat(ui): improve duration display in workflow and execution tables (#223)
+
+* feat(ui): improve duration display in workflow and execution tables
+
+- Add formatDurationHumanReadable() utility for human-readable durations
+  (e.g., '1h 2m' instead of '3748.3s')
+- Add LiveElapsedDuration component that ticks every second for running items
+  instead of showing static '-' dash
+- Update WorkflowsTable, CompactWorkflowsTable, CompactExecutionsTable,
+  and EnhancedExecutionsTable to use new duration formatting
+- Fix 'as any' type assertion in CompactExecutionsTable status prop
+
+Closes #222
+
+* docs: add screenshots for duration display PR (aa02ea1)
+
+- Feat(ai): retry LLM calls on malformed structured output JSON (#224)
+
+When using schema-based structured output, LLMs occasionally return
+malformed JSON that fails parsing. This adds automatic retry (up to 2
+retries) specifically for parse failures, avoiding unnecessary retries
+for network or API errors.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (a462b3a)
+
+- Feat(harness): OpenCode support with schema retry, error preservation, and project_dir routing (#220)
+
+* feat(harness): add schema output diagnosis and enhanced follow-up prompts
+
+Add diagnose_output_failure() that classifies validation failures into
+specific categories: file missing, empty, invalid JSON, or schema mismatch
+with field-level diff. Enhance build_followup_prompt() to include schema
+file references and explicit rewrite instructions for the retry loop.
+
+* feat(harness): add schema validation retry loop with session continuity
+
+Replace single-shot _handle_schema_output() with _handle_schema_with_retry()
+that retries up to schema_max_retries times (default 2) when JSON validation
+fails. Each retry:
+  - Diagnoses the specific failure via diagnose_output_failure()
+  - Sends a follow-up prompt to the agent with error context
+  - For Claude: passes resume=session_id to continue the conversation
+  - For CLI providers: fresh call with the follow-up prompt
+  - Accumulates cost, turns, and messages across all attempts
+
+This activates the previously dead-code build_followup_prompt() from _schema.py
+and adds resume_session_id support to the Claude Code provider.
+
+* test(harness): add complex JSON schema debug test script
+
+Standalone script exercising the harness with 5 escalating schema levels:
+  - simple (2 fields), medium (lists + optionals), complex (13 nested fields),
+    deeply_nested (recursive TreeNode), massive (>4K tokens, file-based path)
+Tested live with both claude-code and codex providers — all levels pass.
+Includes manual retry test mode (--retry-test) to exercise the new retry loop.
+
+* feat(harness): add opencode provider with project_dir routing
+
+- Rewrite opencode.py: auto-managed serve+attach pattern to bypass
+  opencode v1.2.10-v1.2.16 'Session not found' bug
+- Add project_dir field to HarnessConfig (types.py) so coding agents
+  explore the target repo instead of a temp working directory
+- Add output file placement inside project_dir (runner) so sandboxed
+  Write tool can reach the output JSON
+- Pass server_url to OpenCodeProvider via factory
+- Clean up debug prints from runner and claude provider
+- Verified working with openrouter/moonshotai/kimi-k2.5 model
+
+* fix(harness): update opencode provider tests for serve+attach pattern
+
+Tests now pass server_url to skip auto-serve lifecycle in CI where
+opencode binary is not installed. Asserts updated to match --attach
+command structure.
+
+* fix(harness): use direct opencode run for auto-approve permissions
+
+opencode run --attach loses auto-approve because the serve process
+treats attached sessions as interactive, causing permission prompts
+to hang forever when the model tries to write files.
+
+* fix(harness): align opencode tests with direct run (no --attach)
+
+* fix(harness): crash-safe retry with FailureType classification
+
+- Add FailureType enum (NONE, CRASH, TIMEOUT, API_ERROR, SCHEMA, NO_OUTPUT)
+  to RawResult and HarnessResult for intelligent retry decisions
+- Fix returncode masking in run_cli: preserve negative signal values
+- Add strip_ansi() to clean ANSI escape codes from stderr
+- Crash-aware retry in _handle_schema_with_retry: retryable failures
+  (CRASH, NO_OUTPUT) get full prompt re-send instead of immediate bail
+- build_followup_prompt now accepts optional schema param, inlines schema
+  JSON, removed poisonous empty-array hint that caused flat schema failures
+- Exponential backoff between schema retries (0.5s base, 5s max)
+- Apply same crash classification pattern to opencode, codex, gemini providers
+- Update opencode provider test for XDG_DATA_HOME env injection
+
+* fix(harness): remove double-close bug and dead serve code
+
+- write_schema_file: remove try/except that double-closed fd after
+  os.fdopen() already took ownership (caused EBADF on write failure)
+- opencode.py: remove ~100 lines of unused serve+attach machinery
+  (_ensure_serve, _cleanup_serve, _find_free_port, class-level
+  singleton state) — execute() uses direct `opencode run` and never
+  called any of it
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (909038b)
+
+- Feat(readme): replace text examples table with visual showcase cards (#216)
+
+Add 3-column visual 'Built With AgentField' section with premium
+editorial images for Autonomous Engineering Team, Deep Research Engine,
+and Reactive MongoDB Intelligence. Moved higher in README (after
+'What is AgentField?') for better visibility. Removed old text-only
+Production Examples table. (b9add36)
+
+- Feat(webhook): support all HITL template response formats (#213)
+
+* feat(webhook): support all HITL template response formats and multi-pause workflows
+
+The webhook approval handler previously only extracted the "decision" field
+from template responses, causing templates that use "action" (confirm-action,
+rich-text-editor) or have no explicit decision field (signature-capture) to
+fail silently.
+
+Changes:
+- Extract decision from "action" field as fallback when "decision" is absent
+- Default completed webhooks with no decision/action to "approved"
+- Add normalizeDecision() to map template-specific values (approve, confirm,
+  reject, deny, abort, cancel) to canonical set (approved/rejected)
+- Clear approval request fields on "approved" (not just "request_changes")
+  to support multi-pause workflows where agents issue sequential approvals
+- Add localhost:8001 to CORS allowed origins for demo UIs
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: preserve ApprovalRequestID on approved for idempotency and multi-pause
+
+The previous commit cleared ApprovalRequestID on both "approved" and
+"request_changes" decisions. This broke:
+- Idempotent webhook retries (lookup by request ID returned 404)
+- Approval-status queries (same lookup failure)
+- Callback notifications (in-memory store shared pointer was mutated)
+
+Fix:
+- Only clear ApprovalRequestID on "request_changes" (as before)
+- On "approved", clear URL fields but preserve the request ID
+- Save callback URL before the update closure to avoid shared-pointer
+  aliasing in stores that mutate objects in-place
+- Make request-approval handler multi-pause aware: check ApprovalStatus
+  is "pending" (not just ApprovalRequestID existence) so agents can
+  re-request approval after a resolved round
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (aa15d64)
+
+- Feat(harness): add .harness() method for external coding agent dispatch (#210)
+
+* docs: add harness v2 design document with file-write schema strategy
+
+Design document for .harness() feature — first-class coding agent integration.
+Covers architecture, provider matrix, universal file-write schema handling with
+4-layer recovery, config types, and implementation phases.
+
+Ref: #208
+
+* feat(harness): add core types, provider interface, and factory skeleton (#199)
+
+- Add HarnessConfig to types.py (provider required, sensible defaults)
+- Add HarnessResult, RawResult, Metrics result types
+- Add HarnessProvider protocol (Python) / interface (TypeScript)
+- Add build_provider() factory with supported provider validation
+- Python: 8 tests passing, TypeScript: 6 tests passing
+
+Closes #199
+
+* feat(harness): add schema handling with universal file-write strategy (#200)
+
+- Universal file-write: always instruct agent to write JSON to {cwd}/.agentfield_output.json
+- Prompt suffix generation (inline for small schemas, file-based for large >4K tokens)
+- Cosmetic JSON repair: strip markdown fences, trailing commas, truncated brackets
+- Full parse+validate pipeline with Layer 1 (direct) + Layer 2 (repair) fallback
+- Pydantic v1/v2 + Zod schema support
+- Python: 19 tests, TypeScript: 18 tests
+
+Closes #200
+
+* feat(harness): add HarnessRunner with retry and schema orchestration (#201)
+
+- Config resolution: merge HarnessConfig defaults + per-call overrides
+- Exponential backoff + jitter retry for transient errors (rate limits, 5xx, timeouts)
+- Schema orchestration: prompt suffix injection, Layer 1+2 parse/validate
+- Guaranteed temp file cleanup in finally block
+- Cost/metrics/session tracking in HarnessResult
+
+Closes #201
+
+* feat(harness): add Claude Code and Codex providers with shared CLI utilities (#202, #203)
+
+- Claude Code provider: Python uses claude_agent_sdk (lazy import), TS uses @anthropic-ai/claude-agent-sdk (dynamic import)
+- Codex provider: Python + TS use CLI subprocess with shared async utilities
+- Shared CLI module: run_cli, parse_jsonl, extract_final_text for subprocess management
+- All providers implement HarnessProvider protocol with execute() method
+- 14 Python tests + 12 TypeScript tests, all passing (97 total)
+
+* feat(harness): wire .harness() into Agent class with lazy runner (#204)
+
+- Python: harness_config constructor param, lazy harness_runner property, async harness() method
+- TypeScript: harnessConfig in AgentConfig, lazy getHarnessRunner(), async harness() method
+- Package exports: HarnessConfig + HarnessResult from agentfield.__init__
+- 8 Python + 6 TypeScript wiring tests, all passing (111 total)
+
+* feat(harness): add Gemini CLI and OpenCode providers (#205, #206)
+
+- Gemini provider: CLI subprocess with -p prompt, --sandbox auto, -m model flags
+- OpenCode provider: CLI subprocess with --non-interactive, --model flags
+- Factory updated to route all 4 providers: claude-code, codex, gemini, opencode
+- Provider exports updated in Python + TypeScript
+- 10 Python + 10 TypeScript new tests, all passing (131 total)
+
+* fix(harness): address review feedback — lazy imports, trimmed exports, file permissions
+
+- Remove eager provider imports from Python providers/__init__.py (lazy loading preserved via factory)
+- Trim public API exports in Python harness/__init__.py and TypeScript harness/index.ts to only public types
+- Add 0o600 file permissions for schema/output files in _schema.py and schema.ts
+- Fix TypeScript type errors in runner.ts (tsc --noEmit clean)
+
+* feat(harness): add functional tests, fix provider bugs for Claude and OpenCode
+
+- Add 12 Python + 6 TypeScript functional tests invoking real coding agents
+- Fix Claude Code permission_mode mapping (auto → bypassPermissions)
+- Fix OpenCode CLI command (--non-interactive → run subcommand)
+- Mark OpenCode tests as xfail (upstream v1.2.10 headless bug)
+- Add harness_live pytest marker, excluded from default runs
+- Update unit test expectations for provider command changes
+
+Tested: Codex 4/4 ✅, Claude Code 4/4 ✅, cross-provider ✅
+OpenCode: upstream 'Session not found' bug (not our code)
+
+* perf(harness): fix import/allocation regression — lazy imports, WeakMap, async factory
+
+- TS: Replace eager HarnessRunner import with dynamic import() in Agent.ts
+- TS: Use WeakMap instead of class property for _harnessRunner (keeps V8 inline)
+- TS: Make buildProvider async with per-provider dynamic imports in factory.ts
+- Python: Move HarnessRunner import to TYPE_CHECKING + lazy import in property
+- Update all 8 test files for async buildProvider/getHarnessRunner changes
+- All 131 unit tests passing (69 Python + 62 TypeScript)
+- tsc --noEmit clean
+
+* fix(harness): use typing.List for Python 3.8 compat in functional test
+
+Pydantic evaluates annotations at runtime via eval(), so list[str]
+(PEP 585) fails on Python 3.8 even with 'from __future__ import
+annotations'. Use typing.List[str] instead.
+
+* feat(harness): add optional 'harness' and 'harness-claude' extras in pyproject.toml
+
+Users can now install the Claude Code SDK dependency declaratively:
+  pip install agentfield[harness]        # all harness provider deps
+  pip install agentfield[harness-claude]  # just Claude Code SDK
+
+Codex, Gemini, and OpenCode are CLI binaries — no pip packages needed.
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ef1fac5)
+
+- Feat: waiting state with approval workflows, VC-based authorization, and multi-version reasoners (#197)
+
+* feat(control-plane): add VC-based authorization foundation
+
+This commit introduces the foundation for the new VC-based authorization
+system that replaces API key distribution with admin-approved permissions.
+
+Key components added:
+- Architecture documentation (docs/VC_AUTHORIZATION_ARCHITECTURE.md)
+- Database migrations for permission approvals, DID documents, and protected agents
+- Core types for permissions and did:web support
+- DIDWebService for did:web generation, storage, and resolution
+- PermissionService for permission requests, approvals, and VC issuance
+
+The system enables:
+- Agents self-assigning tags (identity declaration)
+- Admin approval workflow for protected agent access
+- Real-time revocation via did:web
+- Control plane as source of truth for approvals
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* feat(vc-authorization): complete VC-based authorization system implementation
+
+- Add DID authentication middleware with Ed25519 signature verification
+- Add permission checking middleware for protected agent enforcement
+- Implement admin API handlers for permission management (approve/reject/revoke)
+- Add permission request and check API endpoints
+- Implement storage layer for DID documents, permission approvals, protected agent rules
+- Add comprehensive integration test suite (14 test functions covering all phases)
+- Add Admin UI pages: PendingPermissions, PermissionHistory, ProtectedAgents
+- Add Go SDK DID authentication support
+- Add Python SDK DID authentication support
+- Fix CI to enable FTS5 tests (previously all SQLite-dependent tests were skipped)
+- Add security documentation for DID authentication
+- Add implementation guide documentation
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix(control-plane): fix pre-existing test bugs exposed by FTS5 build tag
+
+TestGetNodeDetailsHandler_Structure expected HTTP 400 for missing route
+param but Gin returns 404. TestGetNodeStatusHandler_Structure was missing
+a mock expectation for GetAgentStatus causing a panic.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(control-plane): fix pre-existing test bugs exposed by FTS5 build tag
+
+The CI workflow change from `go test ./...` to `go test -tags sqlite_fts5 ./...`
+caused previously-skipped tests to execute, revealing 15 pre-existing bugs:
+
+- UI handler tests: Register agents in storage and configure mocks for
+  GetAgentStatus calls; fix assertions to match actual behavior (health
+  check failures mark agents inactive, not error the request)
+- VC service tests: Fix GetWorkflowVC lookups to use workflow_vc_id not
+  workflow_id; fix issuer mismatch test to tamper VCDocument JSON instead
+  of metadata field; fix error message assertion for empty VC documents
+- VC storage tests: Fix GetWorkflowVC key lookups; fix empty result assertions
+- PresenceManager tests: Register agents in storage so markInactive ->
+  UpdateAgentStatus -> GetAgentStatusSnapshot -> GetAgent succeeds; add
+  proper sync.Mutex for callback vars; use require.Eventually instead of
+  time.Sleep; set HardEvictTTL for lease deletion test
+- Webhook storage: Fix hardcoded Pending status to use webhook.Status
+- Execution records test: Fix LatestStarted assertion (CreateExecutionRecord
+  overwrites updated_at with time.Now())
+- Cleanup test: Wire countWorkflowRuns and deleteWorkflowRuns into
+  workflow cleanup path
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(control-plane): fix SSE tests leaking goroutines via incorrect context cancellation
+
+Multiple SSE tests called req.Context().Done() expecting it to cancel the
+context, but Done() only returns a channel — it doesn't cancel anything.
+This caused SSE handler goroutines to block forever, leaking and eventually
+causing a 10-minute test timeout in CI.
+
+Fixed all affected tests to use context.WithCancel + explicit cancel() call,
+matching the pattern already used by the working SSE tests.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* ts sdk and bug fix on did web
+
+* feat(examples): add permission test agents and enable VC authorization config
+
+Add two example agents for manually testing the VC authorization system
+end-to-end: permission-agent-a (caller) and permission-agent-b (protected
+target). Enable authorization in the default config with seeded protection
+rules.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Fixes
+
+* fix(sdk-python): update test fakes for DID credential wiring in _register_agent_with_did
+
+The previous commit added identity_package access and client credential
+wiring to _register_agent_with_did but didn't update the test fakes.
+_FakeDIDManager now provides a realistic identity_package and
+_FakeAgentFieldClient supports set_did_credentials, so the full
+registration path is exercised in tests.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* more improvements
+
+* 6th iteration of fixes
+
+* end to end tested
+
+* feat(sdk): add Go & TS permission test agents, fix DID auth signing
+
+- Add Go permission test agents (caller + protected target with 3 reasoners)
+- Add TS permission test agents (caller + tag-protected target with VC generation)
+- Fix TS SDK DID auth: pass pre-serialized JSON string to axios to ensure
+  signed bytes match what's sent on the wire
+- Fix Python SDK test for async execution manager payload serialization change
+- Add go-perm-target protection rule to config
+- Gitignore compiled Go agent binaries
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(sdk-ts): update header-forwarding test for pre-serialized JSON body
+
+The execute() method now passes a JSON string instead of an object to
+axios for DID auth signing consistency. Update test assertion to match.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* manual testing updates
+
+* fix(vc-auth): fix re-approval deadlock, empty caller_agent_id, and error propagation
+
+- Fix re-approval deadlock: expand auto-request condition to trigger for
+  revoked/rejected statuses, not just empty (permission.go)
+- Fix empty caller_agent_id: add DID registry fallback in
+  ResolveAgentIDByDID for did:key resolution (did_service.go, did_web_service.go)
+- Fix HTTP 200 for failed executions: return 502 with proper error details
+  when inner agent-to-agent calls fail (execute.go)
+- Fix error propagation across all 3 SDKs:
+  - Go SDK: add ExecuteError type preserving status code and error_details
+  - TS SDK: propagate err.responseData as error_details in all error handlers
+  - Python SDK: add ExecuteError class, extract JSON body from 4xx responses
+    instead of losing it via raise_for_status(), propagate error_details in
+    async callback payloads
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix go missing func
+
+* address dx changes
+
+* temp
+
+* more fixes
+
+* finalized
+
+* better error prop
+
+* fix: update TS DID auth tests to match nonce-based signing format
+
+Tests expected the old 3-header format ({timestamp}:{bodyHash}) but the
+implementation correctly uses 4 headers with nonce ({timestamp}:{nonce}:{bodyHash}),
+matching Go and Python SDKs.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: add rate limiting to DID auth middleware on execution endpoints
+
+Addresses code scanning alert about missing rate limiting on the
+authorization route handler. Adds a sliding-window rate limiter
+(30 requests per IP per 60s) to the local verification middleware.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: use express-rate-limit for DID auth middleware to satisfy CodeQL
+
+Replace custom Map-based rate limiter with express-rate-limit package,
+which CodeQL recognizes as a proper rate limiting implementation.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: remove duplicate countWorkflowRuns method from rebase
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* UI cleanup
+
+* pydantic formatting fix
+
+* connector changes
+
+* implemented multi agents with versioning
+
+* feat(ui): polished authorization page with unified tabs and visual standardization
+
+Replace separate TagApprovalPage and AccessPoliciesPage with a single
+tabbed AuthorizationPage. Add polished authorization components:
+- AccessRulesTab: 48px rows, sorted policies, ALLOW/DENY border colors
+- AgentTagsTab: all agents with tag data, sorted, neutral badges
+- ApproveWithContextDialog: tag selection with policy impact preview
+- PolicyFormDialog: chip-input for tags with known-tag suggestions
+- PolicyContextPanel: shows affected policies for selected tags
+- RevokeDialog: neutral styling, optional reason
+- ChipInput, TooltipTagList: reusable tag UI components
+
+Backend additions:
+- GET /api/ui/v1/authorization/agents: returns all agents with tag data
+- GET /api/v1/admin/tags: returns all known tags from agents & policies
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* multi versioning connector setup
+
+* add agent to agent direct checks
+
+* bugfixes on connector
+
+* QA fixes
+
+* package lock
+
+* bug fixes on permissions & versioning flow
+
+* fix: add missing DeleteAgentVersion stub and guard postgres migration for fresh DBs
+
+Two CI failures:
+
+1. linux-tests: stubStorage in server_routes_test.go was missing the
+   DeleteAgentVersion method added to the StorageProvider interface
+   by the multi-version work. Add the stub.
+
+2. Functional Tests (postgres): migrateAgentNodesCompositePKPostgres
+   tried to ALTER TABLE agent_nodes before GORM created it on fresh
+   databases. The information_schema.columns query returns count=0
+   (not an error) when the table doesn't exist, so the function
+   proceeded to run ALTER statements against a nonexistent table.
+   Add an explicit table existence check matching the pattern already
+   used by the SQLite migration path.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* add postgres testing to dev
+
+* wait flow
+
+* improvements
+
+* bugfix on reasoner path
+
+* reasoner name mismatch fix
+
+* fix skill name mismatch bug
+
+* fix: update test to include approval_expires_at column
+
+The merge brought in a test from main that expected 42 columns in the
+workflow execution insert query, but the feature branch added
+approval_expires_at as the 43rd column. Update the test's column list
+and expected placeholder count to match.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: remove unused httpx import in test_approval.py
+
+Ruff lint flagged the unused import (F401). The tests use httpx_mock
+fixture from pytest-httpx, not httpx directly.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: resolve Python and TypeScript SDK test failures
+
+Python SDK:
+- Add pytest-httpx dependency (with Python >=3.10 constraint)
+- Register httpx_mock marker for --strict-markers compatibility
+- Add importorskip for graceful skip on Python <3.10
+- Fix request_approval test calls to match actual API signature
+
+TypeScript SDK:
+- Call server.closeAllConnections() before server.close() in
+  afterEach to prevent keep-alive connection timeout in tests
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: update test URL to match reasoner name-based endpoint path
+
+After the reasoner name fix, @agent.reasoner(name="reports_generate")
+registers at /reasoners/reports_generate (the explicit name), not
+/reasoners/generate_report (the function name).
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* add examples for waiting state
+
+* fix: resolve Gin route parameter conflict between waiting-state and tag-vc endpoints
+
+The waiting-state feature added routes under /api/v1/agents/:node_id/...
+which conflicted with the existing tag-vc endpoint using :agentId as
+the parameter name. Gin requires consistent wildcard names for the same
+path segment, causing a panic on server startup.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix tests
+
+* fix: correct async endpoint URLs and assertion in waiting state functional tests
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.5 <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (414f91c)
+
+- Feat: VC-based authorization, sidecar management APIs, and multi-version reasoners (#188)
+
+* feat(control-plane): add VC-based authorization foundation
+
+This commit introduces the foundation for the new VC-based authorization
+system that replaces API key distribution with admin-approved permissions.
+
+Key components added:
+- Architecture documentation (docs/VC_AUTHORIZATION_ARCHITECTURE.md)
+- Database migrations for permission approvals, DID documents, and protected agents
+- Core types for permissions and did:web support
+- DIDWebService for did:web generation, storage, and resolution
+- PermissionService for permission requests, approvals, and VC issuance
+
+The system enables:
+- Agents self-assigning tags (identity declaration)
+- Admin approval workflow for protected agent access
+- Real-time revocation via did:web
+- Control plane as source of truth for approvals
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* feat(vc-authorization): complete VC-based authorization system implementation
+
+- Add DID authentication middleware with Ed25519 signature verification
+- Add permission checking middleware for protected agent enforcement
+- Implement admin API handlers for permission management (approve/reject/revoke)
+- Add permission request and check API endpoints
+- Implement storage layer for DID documents, permission approvals, protected agent rules
+- Add comprehensive integration test suite (14 test functions covering all phases)
+- Add Admin UI pages: PendingPermissions, PermissionHistory, ProtectedAgents
+- Add Go SDK DID authentication support
+- Add Python SDK DID authentication support
+- Fix CI to enable FTS5 tests (previously all SQLite-dependent tests were skipped)
+- Add security documentation for DID authentication
+- Add implementation guide documentation
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix(control-plane): fix pre-existing test bugs exposed by FTS5 build tag
+
+TestGetNodeDetailsHandler_Structure expected HTTP 400 for missing route
+param but Gin returns 404. TestGetNodeStatusHandler_Structure was missing
+a mock expectation for GetAgentStatus causing a panic.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(control-plane): fix pre-existing test bugs exposed by FTS5 build tag
+
+The CI workflow change from `go test ./...` to `go test -tags sqlite_fts5 ./...`
+caused previously-skipped tests to execute, revealing 15 pre-existing bugs:
+
+- UI handler tests: Register agents in storage and configure mocks for
+  GetAgentStatus calls; fix assertions to match actual behavior (health
+  check failures mark agents inactive, not error the request)
+- VC service tests: Fix GetWorkflowVC lookups to use workflow_vc_id not
+  workflow_id; fix issuer mismatch test to tamper VCDocument JSON instead
+  of metadata field; fix error message assertion for empty VC documents
+- VC storage tests: Fix GetWorkflowVC key lookups; fix empty result assertions
+- PresenceManager tests: Register agents in storage so markInactive ->
+  UpdateAgentStatus -> GetAgentStatusSnapshot -> GetAgent succeeds; add
+  proper sync.Mutex for callback vars; use require.Eventually instead of
+  time.Sleep; set HardEvictTTL for lease deletion test
+- Webhook storage: Fix hardcoded Pending status to use webhook.Status
+- Execution records test: Fix LatestStarted assertion (CreateExecutionRecord
+  overwrites updated_at with time.Now())
+- Cleanup test: Wire countWorkflowRuns and deleteWorkflowRuns into
+  workflow cleanup path
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(control-plane): fix SSE tests leaking goroutines via incorrect context cancellation
+
+Multiple SSE tests called req.Context().Done() expecting it to cancel the
+context, but Done() only returns a channel — it doesn't cancel anything.
+This caused SSE handler goroutines to block forever, leaking and eventually
+causing a 10-minute test timeout in CI.
+
+Fixed all affected tests to use context.WithCancel + explicit cancel() call,
+matching the pattern already used by the working SSE tests.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* ts sdk and bug fix on did web
+
+* feat(examples): add permission test agents and enable VC authorization config
+
+Add two example agents for manually testing the VC authorization system
+end-to-end: permission-agent-a (caller) and permission-agent-b (protected
+target). Enable authorization in the default config with seeded protection
+rules.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Fixes
+
+* fix(sdk-python): update test fakes for DID credential wiring in _register_agent_with_did
+
+The previous commit added identity_package access and client credential
+wiring to _register_agent_with_did but didn't update the test fakes.
+_FakeDIDManager now provides a realistic identity_package and
+_FakeAgentFieldClient supports set_did_credentials, so the full
+registration path is exercised in tests.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* more improvements
+
+* 6th iteration of fixes
+
+* end to end tested
+
+* feat(sdk): add Go & TS permission test agents, fix DID auth signing
+
+- Add Go permission test agents (caller + protected target with 3 reasoners)
+- Add TS permission test agents (caller + tag-protected target with VC generation)
+- Fix TS SDK DID auth: pass pre-serialized JSON string to axios to ensure
+  signed bytes match what's sent on the wire
+- Fix Python SDK test for async execution manager payload serialization change
+- Add go-perm-target protection rule to config
+- Gitignore compiled Go agent binaries
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(sdk-ts): update header-forwarding test for pre-serialized JSON body
+
+The execute() method now passes a JSON string instead of an object to
+axios for DID auth signing consistency. Update test assertion to match.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* manual testing updates
+
+* fix(vc-auth): fix re-approval deadlock, empty caller_agent_id, and error propagation
+
+- Fix re-approval deadlock: expand auto-request condition to trigger for
+  revoked/rejected statuses, not just empty (permission.go)
+- Fix empty caller_agent_id: add DID registry fallback in
+  ResolveAgentIDByDID for did:key resolution (did_service.go, did_web_service.go)
+- Fix HTTP 200 for failed executions: return 502 with proper error details
+  when inner agent-to-agent calls fail (execute.go)
+- Fix error propagation across all 3 SDKs:
+  - Go SDK: add ExecuteError type preserving status code and error_details
+  - TS SDK: propagate err.responseData as error_details in all error handlers
+  - Python SDK: add ExecuteError class, extract JSON body from 4xx responses
+    instead of losing it via raise_for_status(), propagate error_details in
+    async callback payloads
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix go missing func
+
+* address dx changes
+
+* temp
+
+* more fixes
+
+* finalized
+
+* better error prop
+
+* fix: update TS DID auth tests to match nonce-based signing format
+
+Tests expected the old 3-header format ({timestamp}:{bodyHash}) but the
+implementation correctly uses 4 headers with nonce ({timestamp}:{nonce}:{bodyHash}),
+matching Go and Python SDKs.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: add rate limiting to DID auth middleware on execution endpoints
+
+Addresses code scanning alert about missing rate limiting on the
+authorization route handler. Adds a sliding-window rate limiter
+(30 requests per IP per 60s) to the local verification middleware.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: use express-rate-limit for DID auth middleware to satisfy CodeQL
+
+Replace custom Map-based rate limiter with express-rate-limit package,
+which CodeQL recognizes as a proper rate limiting implementation.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: remove duplicate countWorkflowRuns method from rebase
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* UI cleanup
+
+* pydantic formatting fix
+
+* connector changes
+
+* implemented multi agents with versioning
+
+* feat(ui): polished authorization page with unified tabs and visual standardization
+
+Replace separate TagApprovalPage and AccessPoliciesPage with a single
+tabbed AuthorizationPage. Add polished authorization components:
+- AccessRulesTab: 48px rows, sorted policies, ALLOW/DENY border colors
+- AgentTagsTab: all agents with tag data, sorted, neutral badges
+- ApproveWithContextDialog: tag selection with policy impact preview
+- PolicyFormDialog: chip-input for tags with known-tag suggestions
+- PolicyContextPanel: shows affected policies for selected tags
+- RevokeDialog: neutral styling, optional reason
+- ChipInput, TooltipTagList: reusable tag UI components
+
+Backend additions:
+- GET /api/ui/v1/authorization/agents: returns all agents with tag data
+- GET /api/v1/admin/tags: returns all known tags from agents & policies
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* multi versioning connector setup
+
+* add agent to agent direct checks
+
+* bugfixes on connector
+
+* QA fixes
+
+* package lock
+
+* bug fixes on permissions & versioning flow
+
+* fix: add missing DeleteAgentVersion stub and guard postgres migration for fresh DBs
+
+Two CI failures:
+
+1. linux-tests: stubStorage in server_routes_test.go was missing the
+   DeleteAgentVersion method added to the StorageProvider interface
+   by the multi-version work. Add the stub.
+
+2. Functional Tests (postgres): migrateAgentNodesCompositePKPostgres
+   tried to ALTER TABLE agent_nodes before GORM created it on fresh
+   databases. The information_schema.columns query returns count=0
+   (not an error) when the table doesn't exist, so the function
+   proceeded to run ALTER statements against a nonexistent table.
+   Add an explicit table existence check matching the pattern already
+   used by the SQLite migration path.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* add postgres testing to dev
+
+* docs: add changelog and env vars for connector, versioning, and authorization
+
+Document the feat/connector release including multi-versioning, VC-based
+authorization, and connector subsystem in CHANGELOG.md. Add authorization
+and connector environment variable sections to ENVIRONMENT_VARIABLES.md.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.5 <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (917b49b)
+
+- Feat(python-sdk): add domain-specific exception hierarchy (#187)
+
+* feat(python-sdk): add domain-specific exception hierarchy
+
+* fix(python-sdk): harden exception wrapping and add tests
+
+- Add double-wrap guards (except MemoryAccessError: raise) in all
+  memory.py methods so MemoryAccessError never gets re-wrapped
+- Wrap bare re-raises in client.py async methods (poll, batch_check,
+  wait_for_result, cancel, list, metrics, cleanup) as
+  AgentFieldClientError to match their documented Raises contracts
+- Broaden register_node catch to Exception (catches JSONDecodeError
+  in addition to requests.RequestException)
+- Add 45 tests covering hierarchy, imports, client errors,
+  registration, execution timeout, validation, memory wrapping,
+  and double-wrap prevention
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ebaa4d2)
+
+- Feat(sdk/go): add support for image inputs in ai calls (#164)
+
+* feat: add support for image and audio inputs in ai calls
+
+* fix tests
+
+* fix with image calls
+
+* mend
+
+* mend
+
+* fix: correct image serialization format and remove debug code
+
+- Use OpenAI-standard image_url format with nested {url} struct instead
+  of non-standard input_image type with flat string
+- Add MarshalJSON to Message for backward-compatible serialization
+  (single text parts serialize as plain string)
+- Remove transformForOpenRouter that was dropping Temperature, MaxTokens,
+  Stream, ResponseFormat and other request fields
+- Remove debug fmt.Printf left in production code
+- Fix case-sensitive MIME type detection (now handles .PNG, .JPG, etc.)
+- Fix typo in test ("Reponse" -> "Response")
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ce9ef63)
+
+- Feat: add Railway-deployable init-example agent (#151)
+
+* feat(deploy): add Railway template for one-click deployment
+
+Add Railway configuration for easy deployment of the control plane with PostgreSQL:
+- railway.toml and railway.json at repo root for Railway auto-detection
+- Dockerfile reference to existing control-plane build
+- Health check configuration (/api/v1/health)
+- README with setup instructions and deploy button
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: use correct CLI installation command
+
+* fix: add cache mount IDs for Railway compatibility
+
+Railway's Docker builder requires explicit id parameters for cache mounts.
+Added id=npm-cache, id=go-build-cache, and id=go-mod-cache to the
+respective cache mount directives.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* fix: remove BuildKit cache mounts for Railway compatibility
+
+Railway's builder has specific cache mount requirements that differ from
+standard BuildKit. Removing cache mounts entirely - Railway has its own
+layer caching, so builds still benefit from caching.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* feat: add Railway-deployable init-example agent
+
+- Add standalone package.json with npm-published @agentfield/sdk
+- Add Dockerfile for Railway deployment
+- Update README with step-by-step agent deployment instructions
+- Include curl examples to test echo and sentiment reasoners
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* Add railway.toml for init-example to disable healthcheck
+
+* Revert: remove railway.toml from init-example
+
+* Add railway.toml to init-example to override root config
+
+* forward API key
+
+* Update Railway deployment to use Docker images
+
+- Remove railway.toml files (now using Docker images directly)
+- Add AGENTFIELD_API_KEY and AGENT_CALLBACK_URL support to init-example
+- Rewrite Railway README for Docker-based deployment workflow
+- Document critical AGENT_CALLBACK_URL for agent health checks
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* chore: bump @agentfield/sdk to 0.1.32
+
+* debug: add diagnostic logging to init-example
+
+* remove logs
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (86289b8)
+
+- Feat(deploy): add Railway template for one-click deployment (#149)
+
+* feat(deploy): add Railway template for one-click deployment
+
+Add Railway configuration for easy deployment of the control plane with PostgreSQL:
+- railway.toml and railway.json at repo root for Railway auto-detection
+- Dockerfile reference to existing control-plane build
+- Health check configuration (/api/v1/health)
+- README with setup instructions and deploy button
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: use correct CLI installation command
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (7375d4f)
+
+
+
+### Changed
+
+- Refactor: replace emoji logging with structured zerolog in memory handler (#335)
+
+Convert all 18 emoji-based debug log statements to structured zerolog
+calls with typed fields (operation, scope, key, err, bytes). Log levels
+adjusted: Debug for normal flow, Error for failures, Warn for edge cases.
+No handler logic changed.
+
+Closes #114
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (208be41)
+
+- Refactor: extract shared ErrorResponse helper to handlers/errors.go (#338) (42ddf3b)
+
+
+
+### Chores
+
+- Chore(deps): bump the npm_and_yarn group across 1 directory with 3 updates (#349)
+
+* chore(deps): bump the npm_and_yarn group across 1 directory with 3 updates
+
+Bumps the npm_and_yarn group with 2 updates in the /sdk/typescript directory: [vite](https://github.com/vitejs/vite/tree/HEAD/packages/vite) and [path-to-regexp](https://github.com/pillarjs/path-to-regexp).
+
+
+Updates `vite` from 5.4.21 to 8.0.5
+- [Release notes](https://github.com/vitejs/vite/releases)
+- [Changelog](https://github.com/vitejs/vite/blob/main/packages/vite/CHANGELOG.md)
+- [Commits](https://github.com/vitejs/vite/commits/v8.0.5/packages/vite)
+
+Updates `esbuild` from 0.21.5 to 0.25.12
+- [Release notes](https://github.com/evanw/esbuild/releases)
+- [Changelog](https://github.com/evanw/esbuild/blob/main/CHANGELOG-2024.md)
+- [Commits](https://github.com/evanw/esbuild/compare/v0.21.5...v0.25.12)
+
+Updates `path-to-regexp` from 0.1.12 to 0.1.13
+- [Release notes](https://github.com/pillarjs/path-to-regexp/releases)
+- [Changelog](https://github.com/pillarjs/path-to-regexp/blob/v.0.1.13/History.md)
+- [Commits](https://github.com/pillarjs/path-to-regexp/compare/v0.1.12...v.0.1.13)
+
+---
+updated-dependencies:
+- dependency-name: vite
+  dependency-version: 8.0.5
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: esbuild
+  dependency-version: 0.25.12
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: path-to-regexp
+  dependency-version: 0.1.13
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+* fix(ci): restore dependency compatibility
+
+---------
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (a912244)
+
+- Chore(deps): bump the go_modules group across 1 directory with 3 updates (#348)
+
+Bumps the go_modules group with 3 updates in the /control-plane directory: [golang.org/x/crypto](https://github.com/golang/crypto), [google.golang.org/grpc](https://github.com/grpc/grpc-go) and [github.com/go-viper/mapstructure/v2](https://github.com/go-viper/mapstructure).
+
+
+Updates `golang.org/x/crypto` from 0.37.0 to 0.45.0
+- [Commits](https://github.com/golang/crypto/compare/v0.37.0...v0.45.0)
+
+Updates `google.golang.org/grpc` from 1.67.3 to 1.79.3
+- [Release notes](https://github.com/grpc/grpc-go/releases)
+- [Commits](https://github.com/grpc/grpc-go/compare/v1.67.3...v1.79.3)
+
+Updates `github.com/go-viper/mapstructure/v2` from 2.2.1 to 2.4.0
+- [Release notes](https://github.com/go-viper/mapstructure/releases)
+- [Changelog](https://github.com/go-viper/mapstructure/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/go-viper/mapstructure/compare/v2.2.1...v2.4.0)
+
+---
+updated-dependencies:
+- dependency-name: golang.org/x/crypto
+  dependency-version: 0.45.0
+  dependency-type: direct:production
+  dependency-group: go_modules
+- dependency-name: google.golang.org/grpc
+  dependency-version: 1.79.3
+  dependency-type: direct:production
+  dependency-group: go_modules
+- dependency-name: github.com/go-viper/mapstructure/v2
+  dependency-version: 2.4.0
+  dependency-type: indirect
+  dependency-group: go_modules
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> (436bbc5)
+
+- Chore(deps): bump the npm_and_yarn group across 5 directories with 21 updates (#346)
+
+* chore(deps): bump the npm_and_yarn group across 5 directories with 21 updates
+
+Bumps the npm_and_yarn group with 6 updates in the /sdk/typescript directory:
+
+| Package | From | To |
+| --- | --- | --- |
+| [axios](https://github.com/axios/axios) | `1.13.2` | `1.13.5` |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | `8.2.1` | `8.2.2` |
+| [esbuild](https://github.com/evanw/esbuild) | `0.21.5` | `0.27.0` |
+| [path-to-regexp](https://github.com/pillarjs/path-to-regexp) | `0.1.12` | `0.1.13` |
+| [qs](https://github.com/ljharb/qs) | `6.13.0` | `6.14.2` |
+| [rollup](https://github.com/rollup/rollup) | `4.53.3` | `4.60.1` |
+
+Bumps the npm_and_yarn group with 2 updates in the /examples/ts-node-examples directory: [picomatch](https://github.com/micromatch/picomatch) and [rollup](https://github.com/rollup/rollup).
+Bumps the npm_and_yarn group with 2 updates in the /examples/python_agent_nodes/rag_evaluation/ui directory: [picomatch](https://github.com/micromatch/picomatch) and [next](https://github.com/vercel/next.js).
+Bumps the npm_and_yarn group with 1 update in the /examples/benchmarks/100k-scale/mastra-bench directory: [ai](https://github.com/vercel/ai).
+Bumps the npm_and_yarn group with 13 updates in the /control-plane/web/client directory:
+
+| Package | From | To |
+| --- | --- | --- |
+| [picomatch](https://github.com/micromatch/picomatch) | `2.3.1` | `2.3.2` |
+| [picomatch](https://github.com/micromatch/picomatch) | `4.0.2` | `4.0.4` |
+| [picomatch](https://github.com/micromatch/picomatch) | `4.0.3` | `4.0.4` |
+| [rollup](https://github.com/rollup/rollup) | `4.43.0` | `4.60.1` |
+| [vite](https://github.com/vitejs/vite/tree/HEAD/packages/vite) | `6.3.5` | `6.4.2` |
+| [mdast-util-to-hast](https://github.com/syntax-tree/mdast-util-to-hast) | `13.2.0` | `13.2.1` |
+| [js-yaml](https://github.com/nodeca/js-yaml) | `4.1.0` | `4.1.1` |
+| [brace-expansion](https://github.com/juliangruber/brace-expansion) | `1.1.12` | `1.1.13` |
+| [flatted](https://github.com/WebReflection/flatted) | `3.3.3` | `3.4.2` |
+| [lodash](https://github.com/lodash/lodash) | `4.17.21` | `4.18.1` |
+| [minimatch](https://github.com/isaacs/minimatch) | `3.1.2` | `3.1.5` |
+| [preact](https://github.com/preactjs/preact) | `10.27.2` | `10.29.1` |
+| [react-router](https://github.com/remix-run/react-router/tree/HEAD/packages/react-router) | `7.6.2` | `7.14.0` |
+| [tmp](https://github.com/raszi/node-tmp) | `0.2.3` | `0.2.5` |
+| [yaml](https://github.com/eemeli/yaml) | `2.8.0` | `2.8.3` |
+| [yaml](https://github.com/eemeli/yaml) | `1.10.2` | `1.10.3` |
+
+
+
+Updates `axios` from 1.13.2 to 1.13.5
+- [Release notes](https://github.com/axios/axios/releases)
+- [Changelog](https://github.com/axios/axios/blob/v1.x/CHANGELOG.md)
+- [Commits](https://github.com/axios/axios/compare/v1.13.2...v1.13.5)
+
+Updates `express-rate-limit` from 8.2.1 to 8.2.2
+- [Release notes](https://github.com/express-rate-limit/express-rate-limit/releases)
+- [Commits](https://github.com/express-rate-limit/express-rate-limit/compare/v8.2.1...v8.2.2)
+
+Updates `esbuild` from 0.21.5 to 0.27.0
+- [Release notes](https://github.com/evanw/esbuild/releases)
+- [Changelog](https://github.com/evanw/esbuild/blob/main/CHANGELOG-2024.md)
+- [Commits](https://github.com/evanw/esbuild/compare/v0.21.5...v0.27.0)
+
+Updates `path-to-regexp` from 0.1.12 to 0.1.13
+- [Release notes](https://github.com/pillarjs/path-to-regexp/releases)
+- [Changelog](https://github.com/pillarjs/path-to-regexp/blob/v.0.1.13/History.md)
+- [Commits](https://github.com/pillarjs/path-to-regexp/compare/v0.1.12...v.0.1.13)
+
+Updates `picomatch` from 4.0.3 to 4.0.4
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `qs` from 6.13.0 to 6.14.2
+- [Changelog](https://github.com/ljharb/qs/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/ljharb/qs/compare/v6.13.0...v6.14.2)
+
+Updates `rollup` from 4.53.3 to 4.60.1
+- [Release notes](https://github.com/rollup/rollup/releases)
+- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/rollup/rollup/compare/v4.53.3...v4.60.1)
+
+Updates `vite` from 5.4.21 to 8.0.5
+- [Release notes](https://github.com/vitejs/vite/releases)
+- [Changelog](https://github.com/vitejs/vite/blob/v6.4.2/packages/vite/CHANGELOG.md)
+- [Commits](https://github.com/vitejs/vite/commits/v6.4.2/packages/vite)
+
+Updates `picomatch` from 4.0.3 to 4.0.4
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `rollup` from 4.53.3 to 4.60.1
+- [Release notes](https://github.com/rollup/rollup/releases)
+- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/rollup/rollup/compare/v4.53.3...v4.60.1)
+
+Updates `picomatch` from 2.3.1 to 2.3.2
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `picomatch` from 4.0.3 to 4.0.4
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `next` from 14.2.15 to 15.5.14
+- [Release notes](https://github.com/vercel/next.js/releases)
+- [Changelog](https://github.com/vercel/next.js/blob/canary/release.js)
+- [Commits](https://github.com/vercel/next.js/compare/v14.2.15...v15.5.14)
+
+Removes `ai`
+
+Updates `hono` from 4.11.3 to 4.12.12
+- [Release notes](https://github.com/honojs/hono/releases)
+- [Commits](https://github.com/honojs/hono/compare/v4.11.3...v4.12.12)
+
+Updates `picomatch` from 2.3.1 to 2.3.2
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `picomatch` from 4.0.2 to 4.0.4
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `picomatch` from 4.0.3 to 4.0.4
+- [Release notes](https://github.com/micromatch/picomatch/releases)
+- [Changelog](https://github.com/micromatch/picomatch/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/micromatch/picomatch/compare/4.0.3...4.0.4)
+
+Updates `rollup` from 4.43.0 to 4.60.1
+- [Release notes](https://github.com/rollup/rollup/releases)
+- [Changelog](https://github.com/rollup/rollup/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/rollup/rollup/compare/v4.53.3...v4.60.1)
+
+Updates `vite` from 6.3.5 to 6.4.2
+- [Release notes](https://github.com/vitejs/vite/releases)
+- [Changelog](https://github.com/vitejs/vite/blob/v6.4.2/packages/vite/CHANGELOG.md)
+- [Commits](https://github.com/vitejs/vite/commits/v6.4.2/packages/vite)
+
+Updates `mdast-util-to-hast` from 13.2.0 to 13.2.1
+- [Release notes](https://github.com/syntax-tree/mdast-util-to-hast/releases)
+- [Commits](https://github.com/syntax-tree/mdast-util-to-hast/compare/13.2.0...13.2.1)
+
+Updates `js-yaml` from 4.1.0 to 4.1.1
+- [Changelog](https://github.com/nodeca/js-yaml/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/nodeca/js-yaml/compare/4.1.0...4.1.1)
+
+Updates `brace-expansion` from 1.1.12 to 1.1.13
+- [Release notes](https://github.com/juliangruber/brace-expansion/releases)
+- [Commits](https://github.com/juliangruber/brace-expansion/compare/v1.1.12...v1.1.13)
+
+Updates `flatted` from 3.3.3 to 3.4.2
+- [Commits](https://github.com/WebReflection/flatted/compare/v3.3.3...v3.4.2)
+
+Updates `lodash` from 4.17.21 to 4.18.1
+- [Release notes](https://github.com/lodash/lodash/releases)
+- [Commits](https://github.com/lodash/lodash/compare/4.17.21...4.18.1)
+
+Updates `minimatch` from 3.1.2 to 3.1.5
+- [Changelog](https://github.com/isaacs/minimatch/blob/main/changelog.md)
+- [Commits](https://github.com/isaacs/minimatch/compare/v3.1.2...v3.1.5)
+
+Updates `preact` from 10.27.2 to 10.29.1
+- [Release notes](https://github.com/preactjs/preact/releases)
+- [Commits](https://github.com/preactjs/preact/compare/10.27.2...10.29.1)
+
+Updates `react-router` from 7.6.2 to 7.14.0
+- [Release notes](https://github.com/remix-run/react-router/releases)
+- [Changelog](https://github.com/remix-run/react-router/blob/main/packages/react-router/CHANGELOG.md)
+- [Commits](https://github.com/remix-run/react-router/commits/react-router@7.14.0/packages/react-router)
+
+Updates `tmp` from 0.2.3 to 0.2.5
+- [Changelog](https://github.com/raszi/node-tmp/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/raszi/node-tmp/compare/v0.2.3...v0.2.5)
+
+Updates `yaml` from 2.8.0 to 2.8.3
+- [Release notes](https://github.com/eemeli/yaml/releases)
+- [Commits](https://github.com/eemeli/yaml/compare/v2.8.0...v2.8.3)
+
+Updates `yaml` from 1.10.2 to 1.10.3
+- [Release notes](https://github.com/eemeli/yaml/releases)
+- [Commits](https://github.com/eemeli/yaml/compare/v2.8.0...v2.8.3)
+
+---
+updated-dependencies:
+- dependency-name: axios
+  dependency-version: 1.13.5
+  dependency-type: direct:production
+  dependency-group: npm_and_yarn
+- dependency-name: express-rate-limit
+  dependency-version: 8.2.2
+  dependency-type: direct:production
+  dependency-group: npm_and_yarn
+- dependency-name: esbuild
+  dependency-version: 0.27.0
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: path-to-regexp
+  dependency-version: 0.1.13
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 4.0.4
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: qs
+  dependency-version: 6.14.2
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: rollup
+  dependency-version: 4.60.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: vite
+  dependency-version: 8.0.5
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 4.0.4
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: rollup
+  dependency-version: 4.60.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 2.3.2
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 4.0.4
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: next
+  dependency-version: 15.5.14
+  dependency-type: direct:production
+  dependency-group: npm_and_yarn
+- dependency-name: ai
+  dependency-version: 
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: hono
+  dependency-version: 4.12.12
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 2.3.2
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 4.0.4
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: picomatch
+  dependency-version: 4.0.4
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: rollup
+  dependency-version: 4.60.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: vite
+  dependency-version: 6.4.2
+  dependency-type: direct:development
+  dependency-group: npm_and_yarn
+- dependency-name: mdast-util-to-hast
+  dependency-version: 13.2.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: js-yaml
+  dependency-version: 4.1.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: brace-expansion
+  dependency-version: 1.1.13
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: flatted
+  dependency-version: 3.4.2
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: lodash
+  dependency-version: 4.18.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: minimatch
+  dependency-version: 3.1.5
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: preact
+  dependency-version: 10.29.1
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: react-router
+  dependency-version: 7.14.0
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: tmp
+  dependency-version: 0.2.5
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: yaml
+  dependency-version: 2.8.3
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+- dependency-name: yaml
+  dependency-version: 1.10.3
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+* fix(ci): unbreak sdk and bot PR checks
+
+* fix(sdk): keep vitest on node 18 compatible track
+
+---------
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (37ecbf6)
+
+- Chore: compress README images for faster loading (753591a)
+
+- Chore: rebrand README and assets to gold/dark theme (#306)
+
+Update all visual assets and badge colors to match the new agentfield.ai
+website theme (dark #0c0b09 background, gold #d4a24a accents, cream #f5f0eb text).
+
+- README badges: purple #7c3aed → gold #d4a24a, label bg → #0c0b09
+- GitHub hero banner: rethemed to gold, model updated to claude-sonnet-4
+- Architecture diagram: rethemed purple/green headings → gold
+- Features strip: rethemed teal dots → gold dots on dark background (980bb90)
+
+- Chore: update GitHub README hero banner and tagline
+
+Replace old "Kubernetes for AI Agents" banner with new developer-focused
+banner showing real AgentField code with selective highlighting. Update
+tagline to "Build and scale AI agents like APIs. Deploy, observe, and prove." (d9a28e2)
+
+- Chore(readme): remove redundant horizontal rules
+
+GitHub already renders ## headings with visual separation.
+The 11 --- rules created double-spacing that made the README choppy. (48baf65)
+
+- Chore: remove redundant CLA assistant workflow (#192)
+
+The contributor-assistant/github-action workflow requires a PAT to
+store signatures in the remote .github repo, which is not configured.
+The hosted cla-assistant.io integration (license/cla) is already
+active and working, making this workflow redundant.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (aedd982)
+
+- Chore: add CLA assistant workflow (abd1d79)
+
+- Chore: add CODEOWNERS with AbirAbbas as default reviewer (0ea7a8c)
+
+- Chore(web-ui): remove dead filter components (#190)
+
+Remove 9 unused files that are not imported anywhere in the app.
+The Executions page uses PageHeader with FilterSelect dropdowns,
+not these legacy toggle-button filter components.
+
+Removed files:
+- ExecutionFilters.tsx, ExecutionsList.tsx, QuickFilters.tsx
+- SearchWithFilters.tsx, SuggestedFilters.tsx, FilterTag.tsx
+- hooks/useFilterState.ts, utils/filterUtils.ts, types/filters.ts
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ef8efe8)
+
+- Chore(init-example): bump SDK to ^0.1.33 (#154)
+
+Update init-example to use SDK 0.1.33 which includes the connection
+pooling fix that prevents socket exhaustion on long-running deployments.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-authored-by: Claude <noreply@anthropic.com> (6b8aa38)
+
+
+
+### Documentation
+
+- Docs: document hosted CLA bot policy (#347) (f61e72b)
+
+- Docs: add godoc comments to StorageProvider interface methods (#336) (799c4a2)
+
+- Docs: update README UTM links with granular tracking (#328)
+
+* docs: update all README UTM links with granular tracking IDs
+
+Replace generic utm_medium=referral with unique utm_id per link
+and add utm_campaign=github-readme consistently across all 35
+outbound links. This enables granular click attribution in analytics
+to see exactly which README section drives traffic.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* docs: track UTM links reference file in assets
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* docs: add HTML comment referencing UTM links file
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* docs: update UTM links CSV with target URLs
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* docs: clarify HTML comment about UTM link requirements
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* docs: note that CSV target URLs are for reference only
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: OG <oktaygoktas@users.noreply.github.com>
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (6e4f258)
+
+- Docs: add CloudSecurity AF to Built With AgentField section (#327)
+
+Co-authored-by: OG <oktaygoktas@users.noreply.github.com>
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (4620a4b)
+
+- Docs: rewrite README - tighter structure, full feature showcase, new architecture diagram
+
+- Restructured from 492 to ~290 lines with conversion-optimized flow
+- New hero code example: claims processor showing app.ai(), app.pause(), app.call(), versioning, tags
+- Quick Start moved above examples for action-first flow
+- Added 90+ feature showcase in collapsible section with categorized tables
+- New wide 16:9 architecture diagram with three-zone layout (Your Services / The AI Backend / Agent Fleet)
+- Added features strip image as visual CTA for capabilities section
+- Repositioned Govern section as IAM for AI agents
+- All agentfield.ai links now have UTM tracking (utm_source=github-readme&utm_medium=referral)
+- Added SDK links (Python, Go, TypeScript, REST API) to header nav
+- Replaced em dashes with regular dashes throughout
+- Added canary deployments, agent discovery, HITL, connector API, memory events to feature list
+- Honest "Is AgentField for you?" scoping section
+- Quick start verified end-to-end in fresh Docker container (b161913)
+
+- Docs: add UTM tracking to example project links in README
+
+Replace direct GitHub links for SWE-AF, Deep Research, MongoDB, and
+sec-af with tracked redirects through agentfield.ai/github/* routes
+to measure README-driven traffic via Umami analytics. (96cbb77)
+
+- Docs: add AI tool calling documentation to READMEs (#231)
+
+Document the new native LLM tool-calling feature (PR #228) in the main
+README and all three SDK READMEs with examples showing auto-discovery,
+filtered discovery, lazy hydration, guardrails, and observability.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (56bf930)
+
+- Docs: add human-in-the-loop approval docs to SDK READMEs (#212)
+
+Add approval workflow documentation with code examples to all three
+SDK READMEs (Python, TypeScript, Go), covering the waiting state
+feature for pausing agent execution pending human review.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (88f24cf)
+
+- Docs(python-sdk): document memory scope hierarchy (#184) (fde9ce2)
+
+- Docs: [Go SDK] Add documentation to Config struct fields (#171) (5dc1a59)
+
+
+
+### Fixed
+
+- Fix(sdk/python): replace deprecated datetime.utcnow() with timezone-a… (#332)
+
+* fix(sdk/python): replace deprecated datetime.utcnow() with timezone-aware alternative
+
+datetime.utcnow() is deprecated since Python 3.12 and scheduled for
+removal. It produces naive datetime objects with no timezone info,
+which causes DeprecationWarning on every test run across 5 files.
+
+Additionally, two call sites combined .isoformat() + 'Z' on a
+timezone-aware datetime, producing invalid ISO strings like:
+  '2026-04-05T01:30:20.584591+00:00Z'  ← double timezone suffix
+
+This caused test failures in test_vc_generator.py.
+
+Changes:
+- agentfield/did_manager.py: add timezone import, utcnow → now(timezone.utc)
+- agentfield/agent.py: utcnow → now(timezone.utc), fix isoformat+Z
+- agentfield/client.py: datetime.datetime.utcnow() → datetime.datetime.now(datetime.timezone.utc)
+- agentfield/vc_generator.py: add timezone import, utcnow → now(timezone.utc)
+- tests/test_vc_generator.py: add timezone import, utcnow → now(timezone.utc), fix isoformat+Z
+
+All 745 tests pass with 0 failures after this change.
+DeprecationWarnings reduced from 36 to 0.
+
+* fix(sdk/python): fix remaining naive timestamps in client.py registration payloads
+
+Per code review feedback from @santoshkumarradha:
+
+- Add _utc_now_iso() shared helper in client.py for consistent UTC
+  timestamp formatting across the file
+- Replace 4 remaining datetime.datetime.now().isoformat() + 'Z' calls
+  in the registration payloads (last_heartbeat, registered_at) with
+  the helper — these were producing naive local timestamps with a UTC
+  suffix incorrectly appended
+- Add TestUtcNowIso test class (5 tests) covering: string type, Z suffix,
+  valid ISO parse, no double-offset, millisecond precision
+
+All 745 tests pass. (265cf79)
+
+- Fix(cors): remove wildcard Access-Control-Allow-Origin from SSE handlers (#331)
+
+Six SSE handler endpoints hardcode `Access-Control-Allow-Origin: *`,
+bypassing the global gin-contrib/cors middleware which enforces a
+restricted origin list from configuration. This allows any origin to
+connect to real-time streaming endpoints and exfiltrate execution data,
+log streams, and agent status updates.
+
+Remove the per-handler CORS headers and let the router-level middleware
+handle origin validation consistently across all endpoints.
+
+Affected handlers:
+- StreamExecutionLogsHandler (execution_logs.go)
+- StreamWorkflowNodeNotesHandler (executions.go)
+- StreamExecutionEventsHandler (executions.go)
+- GetMCPEventsHandler (mcp.go)
+- StreamNodeEventsHandler (nodes.go)
+- StreamReasonerEventsHandler (reasoners.go)
+
+Co-authored-by: José Maia <glitch-ux@users.noreply.github.com> (9b41051)
+
+- Fix(web-ui): remove debug console logs (#317)
+
+Refs #107
+
+Co-authored-by: nanqinhu <139929317+nanqinhu@users.noreply.github.com> (c35b248)
+
+- Fix(web-ui): replace unsafe any types in execution form (#312)
+
+Co-authored-by: nanqinhu <139929317+nanqinhu@users.noreply.github.com> (ab9ee07)
+
+- Fix(web-ui): add accessible labels to node card (#313)
+
+Co-authored-by: nanqinhu <139929317+nanqinhu@users.noreply.github.com> (cccbe71)
+
+- Fix(web-ui): replace unsafe vcStatus casts across execution components (#308)
+
+Co-authored-by: nanqinhu <139929317+nanqinhu@users.noreply.github.com> (6bbad4a)
+
+- Fix(ci): retry transient OpenRouter timeouts in functional tests
+
+OpenRouter API intermittently times out (60s), causing CI flakes.
+- Add pytest-rerunfailures to retry only Timeout/ConnectionError failures (up to 2x with 5s delay)
+- Increase OpenRouter timeout from 60s to 120s and retry_attempts from 2 to 3
+- Mark test_readme_quick_start_summarize_flow as flaky for documentation (158f09c)
+
+- Fix: update all website links to match new site URL structure (#303)
+
+The website was reorganized from flat paths to Learn/Build/Reference
+sections. This updates all agentfield.ai links across the repo to
+use canonical URLs instead of relying on redirects (or 404ing).
+
+Key path changes:
+- /docs → /docs/learn
+- /docs/core-concepts/* → /docs/build/{execution,coordination,governance}/*
+- /api/*-sdk/* → /docs/reference/sdks/*
+- /guides/deployment/* → /docs/reference/deploy
+- /blog/posts/* → /blog/*
+- /examples/* → /docs/learn/examples
+- agentfield.dev → agentfield.ai (typo fix)
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (134b3db)
+
+- Fix: QA authorization issues — revoke idempotency, health checks, UI bugs (#301)
+
+* fix: QA authorization issues — revoke idempotency, health checks, UI bugs
+
+- Return 409 Conflict when revoking already-revoked agent tags instead of
+  silently succeeding
+- Add health status and lifecycle checks to reasoner/skill execution handlers,
+  returning 503 when agent node is unhealthy or offline
+- Handle zero-value timestamps in formatRelativeTime (display "—" instead of
+  "Jan 1, 1")
+- Wire Refresh button on Authorization page to also re-fetch Agent Tags tab data
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: allow reasoner/skill calls for agents with unknown health status
+
+Newly registered agents get HealthStatusUnknown (no heartbeat yet).
+The previous check required HealthStatusActive, which caused all
+functional tests to 503 because agents register and immediately
+invoke reasoners before a heartbeat can promote them to active.
+
+Changed the guard to only block HealthStatusInactive agents, which
+are definitively unreachable. Unknown and active agents pass through.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (4318c57)
+
+- Fix: resolve PR #284 review issues — logging, flag scoping, dead code, docstring (#290)
+
+- Remove empty PersistentPreRun on agent command that silently
+  overrode root PersistentPreRunE, preventing logger initialization
+  for all af agent subcommands
+- Move --output and --timeout flags from root PersistentFlags to
+  agent command scope (avoid polluting af dev, af server, etc.)
+- Remove redundant server URL fallback in agentHTTP() (GetServerURL
+  already handles the default)
+- Fix Python SDK split docstring: merge orphaned string literal back
+  into __init__ docstring, place resolution code after docstring
+- Add doc comment to packages/server_url.go for parity with
+  services/server_url.go (28beee5)
+
+- Fix: capture Claude Agent SDK response by checking subtype='success' (#286)
+
+The Claude Code provider checked for type=='result' to extract the response
+text, but the Claude Agent SDK sends the final message with subtype=='success'
+(no type field). This caused HarnessResult.result to always be None.
+
+Fixes #252
+
+Co-authored-by: Claude <noreply@anthropic.com> (a698c32)
+
+- Fix(storage): apply default idle connections when MaxIdleConns is unconfigured (#272)
+
+The guard `maxIdle < 0` never triggers for the zero-value of int (0),
+so `SetMaxIdleConns(0)` is called — telling database/sql to keep no
+idle connections. Every query opens and closes a fresh TCP connection
+to Postgres, adding ~30-150 ms of overhead per request and causing
+connection churn (~5 new backend PIDs/sec).
+
+Changing to `<= 0` ensures the default of 5 idle connections is applied
+when the setting is omitted, matching the existing `maxOpen <= 0` guard
+on the line above.
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (5b3e08c)
+
+- Fix: capture stderr from Claude Code CLI for error diagnosis (#268)
+
+* fix: capture stderr from Claude Code CLI for error diagnosis
+
+The ClaudeCodeProvider was not passing a stderr callback to
+ClaudeAgentOptions, so when the claude CLI exited with code 1,
+the actual error message was lost. Logs only showed "Command
+failed with exit code 1" with no actionable details.
+
+Now passes a stderr callback that collects output and includes
+it in both the error log and the RawResult.error_message field.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+* fix: set stderr callback on opts object, not agent_options dict
+
+Avoids test assertion failures caused by unexpected 'stderr' key
+in the agent_options dictionary.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com> (afcbeee)
+
+- Fix: prevent async executions from getting stuck in running state (#267)
+
+Two issues caused async executions to remain in "running" state forever
+when the reasoner failed:
+
+1. SDK: asyncio.create_task() return values were not stored, making
+   fire-and-forget tasks eligible for GC before the status callback
+   could be delivered. Now stored in a set with auto-cleanup via
+   done_callback. Also increased callback timeout from 10s to 30s
+   since the shared httpx client's default is too aggressive for
+   concurrent status updates over internal networking.
+
+2. CP: stale execution reaper ran every 1h with a 30m timeout (worst
+   case ~90min to clean up). Reduced to 5m interval with 10m timeout
+   so stuck executions are marked as timed-out within 15 minutes.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (950b01c)
+
+- Fix(sdk): tune rate limiter defaults for fail-fast behavior (#265)
+
+Reduce exponential backoff aggressiveness to prevent 2+ hour workflow
+runtimes when using rate-limited providers like OpenRouter. The previous
+defaults (20 retries, 300s max delay, 300s circuit breaker) caused
+cascading backoff that compounded across parallel agents.
+
+New defaults: 5 retries, 0.5s base delay, 30s max delay, circuit breaker
+threshold 5 with 30s timeout. Max theoretical wait per call drops from
+~100 minutes to ~2.5 minutes.
+
+Changes:
+- Python StatelessRateLimiter: max_retries 20→5, base_delay 1.0→0.5,
+  max_delay 300→30, circuit_breaker_threshold 10→5, timeout 300→30
+- TypeScript StatelessRateLimiter: identical parameter changes
+- AIConfig: updated Field defaults to match rate limiter
+- Added functional tests validating new defaults and max wait bounds
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (486ff3d)
+
+- Fix: reap stale workflow executions and use updated_at for staleness (#262)
+
+* fix: reap stale workflow executions and use updated_at for staleness detection
+
+The existing MarkStaleExecutions only covered the executions table and
+used started_at to detect staleness, which missed orphaned workflow
+executions entirely and could incorrectly timeout legitimately long-running
+executions. This change:
+
+- Switches staleness detection from started_at to updated_at so only
+  executions with no recent activity are reaped
+- Adds MarkStaleWorkflowExecutions to handle the workflow_executions
+  table where orphaned child executions get permanently stuck in
+  running state when their parent fails
+- Wires both into the existing ExecutionCleanupService background loop
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* test: add functional tests for stale execution reaper with real SQLite
+
+Tests run against a real database (no mocks) covering:
+- Stuck executions reaped while active ones are preserved
+- Long-running executions with recent activity NOT incorrectly reaped
+- Orphaned workflow children reaped when parent already failed
+- Waiting-state executions reaped after inactivity
+- Batch limit respected across multiple reaper passes
+- End-to-end scenario: parent fails, children stuck in both tables
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: use COALESCE fallback for NULL updated_at in stale reaper queries
+
+- Use COALESCE(updated_at, created_at, started_at) in both
+  MarkStaleExecutions and MarkStaleWorkflowExecutions to handle
+  rows where updated_at was never set
+- Add invariant comment documenting that updated_at must be bumped
+  on every meaningful activity for staleness detection to work
+- Add tests for NULL updated_at scenario on both execution types
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+Co-authored-by: Santosh <santosh@agentfield.ai> (56410a6)
+
+- Fix: update estimate_cli_cost for litellm v1.80+ API (#261)
+
+* fix: update estimate_cli_cost for litellm v1.80+ API
+
+litellm removed prompt_tokens/completion_tokens kwargs from
+completion_cost() in v1.80. Switch to prompt/completion string
+params which litellm tokenizes internally.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix: update cost estimation test for litellm v1.80+ API
+
+The test was asserting token_counter calls and prompt_tokens/completion_tokens
+kwargs which were removed in the implementation fix. Update to match the new
+prompt/completion string params API.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (4583e3c)
+
+- Fix: use status snapshot for node status endpoints to prevent flickering (#259)
+
+GetNodeStatusHandler and BulkNodeStatusHandler were performing live HTTP
+health checks on every call (1s cache for active agents). With the UI
+polling every 3s, a single transient network failure in Railway would
+immediately return "offline", causing agent status to flicker. Now uses
+GetAgentStatusSnapshot which returns the stored status managed by the
+background HealthMonitor (which has proper 3-consecutive-failure
+debouncing and heartbeat gating). The explicit POST .../status/refresh
+endpoint remains available for on-demand live checks.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (584b995)
+
+- Fix: wire ApplyEnvOverrides into server startup (#258)
+
+* fix: wire ApplyEnvOverrides into server startup for Railway deployments
+
+The applyEnvOverrides function (handling short env var names like
+AGENTFIELD_CONNECTOR_ENABLED) was never called from the actual server
+startup path. main.go uses Viper for config loading, but Viper's
+AutomaticEnv only matches keys it already knows about from config files.
+On Railway (no config file), ALL connector env vars were silently ignored,
+causing connector routes to never be registered.
+
+Export ApplyEnvOverrides and call it after Viper unmarshal so env vars
+like AGENTFIELD_CONNECTOR_ENABLED, AGENTFIELD_CONNECTOR_TOKEN, and
+capability flags (AGENTFIELD_CONNECTOR_CAP_*) work on file-less deploys.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* feat: add connector status routes for list_nodes and get_node_status
+
+The connector's status handler was calling /api/v1/nodes (a regular API
+endpoint requiring API key auth) instead of connector-scoped routes.
+Added /api/v1/connector/nodes and /api/v1/connector/nodes/:id/status
+routes gated by status_read capability, matching the pattern used by
+other connector domains.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (c731519)
+
+- Fix: add config_management to connector capability env var map (#257)
+
+The connectorCapEnvMap was missing the config_management capability,
+so AGENTFIELD_CONNECTOR_CAP_CONFIG_MANAGEMENT env var was silently
+ignored. This caused connector config routes to not be accessible
+when configured via environment variables (e.g. Railway deployments).
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ff098c1)
+
+- Fix: skip global API key check for connector routes (#255)
+
+Connector routes have their own dedicated ConnectorTokenAuth middleware
+that enforces X-Connector-Token with constant-time comparison. The global
+APIKeyAuth middleware was incorrectly requiring the API key on these routes
+too, forcing connectors to know and send the CP's global API key — a
+credential they should never need.
+
+This adds a prefix skip for /api/v1/connector/ in APIKeyAuth, matching
+the existing pattern for /health, /ui, and /api/v1/did/ routes.
+
+Also adds comprehensive functional tests for the full connector auth chain:
+- ConnectorTokenAuth (valid/invalid/missing token, audit metadata injection)
+- ConnectorCapabilityCheck (enabled/disabled/read-only/missing capabilities)
+- Integration tests proving connector routes reject requests without a valid
+  connector token, even though they bypass the global API key check
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (6d969a1)
+
+- Fix(install): BSD sed compatibility and env var pipe scoping in install.sh (#251)
+
+Replace GNU-only \s with POSIX [[:space:]]* in get_latest_prerelease_version()
+sed regex — \s is not recognized by macOS BSD sed, causing the version
+string to contain raw JSON instead of just the tag name.
+
+Fix documented VERSION/STAGING env var patterns: VAR=val cmd1 | cmd2
+scopes VAR to cmd1 only (POSIX shell behavior), so bash never sees it.
+Corrected to: curl ... | VERSION=X bash
+
+Fixes #250 (96c3ae9)
+
+- Fix: allow state transitions from stopping to active/starting
+
+When a node restarts while the control plane still considers it
+"stopping", heartbeats get rejected causing the node to be stuck
+offline. Allow stopping → active/starting transitions so nodes
+can recover from this state.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com> (d328e60)
+
+- Fix(sdk): catch Pydantic ValidationError in structured output parsing
+
+Pydantic v2 ValidationError does not inherit from ValueError, so schema
+validation failures (e.g. missing required fields) were not caught by
+the retry logic. This caused LLM responses with incomplete JSON to crash
+the execution instead of retrying.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com> (e2330d9)
+
+- Fix(ui): center sidebar nav icons when collapsed (#247)
+
+Remove redundant px-2 from SidebarContent that stacked with
+SidebarGroup's built-in p-2, causing 32px of horizontal padding
+inside the 48px collapsed rail. The 32px icon buttons overflowed
+right, appearing right-justified instead of centered. (6c1eebb)
+
+- Fix: include API key in note() request headers (#235)
+
+* fix: include API key in note() request headers
+
+The note() method was sending execution context headers but
+not the X-API-Key, causing 401 when the control plane has
+API key auth enabled (production). Works locally because
+local dev typically has no API key configured.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Fix test stub to include _get_auth_headers on client
+
+The test_note_sends_async_request test was failing because the agent
+stub's client (SimpleNamespace) lacked the _get_auth_headers method
+added in the note auth fix. The _send_note coroutine calls
+self.client._get_auth_headers(), which raised AttributeError and
+silently prevented the HTTP post from executing.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (087c2c6)
+
+- Fix: include API key in note() request headers
+
+The note() method was sending execution context headers but
+not the X-API-Key, causing 401 when the control plane has
+API key auth enabled (production). Works locally because
+local dev typically has no API key configured.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com> (94725ff)
+
+- Fix(harness): add concurrency limiter, stdout fallback, and stronger prompts (#230)
+
+Root cause: unbounded concurrent opencode subprocess calls (20+) overwhelm
+the LLM API, causing transient failures where output files are never created.
+
+Changes:
+- opencode.py: add global asyncio.Semaphore (default 3, configurable via
+  OPENCODE_MAX_CONCURRENT) to throttle concurrent opencode run processes;
+  add 600s timeout; add structured logging for finish/error states
+- _schema.py: strengthen output prompt to emphasize Write tool usage;
+  add try_parse_from_text() fallback that extracts JSON from LLM stdout
+  when the output file is missing (fenced blocks, brace matching, cosmetic repair)
+- _runner.py: wire stdout fallback after parse_and_validate in both initial
+  and retry paths
+
+Validated: full SEC-AF pipeline (11 hunt strategies, 30 verified findings)
+completes end-to-end with 0 enricher failures, vs repeated failures before. (2947d5b)
+
+- Fix(did): add did:web resolution to document endpoint (#227)
+
+* fix(did): add did:web resolution to /api/v1/did/document/:did endpoint
+
+The GetDIDDocument handler only resolved did:key identities via the
+in-memory registry. did:web lookups returned "DID not found" even when
+the agent had a valid did:web document stored in the database.
+
+Add did:web resolution (via didWebService) before falling back to
+did:key, matching the pattern already used by the ResolveDID handler
+and the server's serveDIDDocument method.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* fix(did): normalize URL-decoded %3A in did:web path params
+
+Gin URL-decodes path parameters, turning did:web:localhost%3A8080:agents:foo
+into did:web:localhost:8080:agents:foo. The database stores the canonical
+form with %3A, so lookups failed with "DID not found".
+
+Add normalizeDIDWeb() helper that detects decoded port separators and
+re-encodes them. Applied to both ResolveDID and GetDIDDocument handlers.
+
+Manually verified against running control plane:
+- /api/v1/did/document/did:web:... → 200 with W3C DID Document
+- /api/v1/did/resolve/did:web:... → 200 with DID resolution result
+- did:key paths unchanged (no regression)
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (cdf4e8b)
+
+- Fix: allow empty input for parameterless skills/reasoners (#198)
+
+* fix: allow empty input for parameterless skills/reasoners (#196)
+
+Remove binding:"required" constraint on Input field in ExecuteRequest and
+ExecuteReasonerRequest structs. Gin interprets required on maps as
+"must be present AND non-empty", which rejects the valid {"input":{}}
+payload that SDKs send for parameterless calls.
+
+Also remove the explicit len(req.Input)==0 check in prepareExecution and
+add nil-input guards in the reasoner and skill handlers to match the
+existing pattern in execute.go.
+
+Closes #196
+
+* test: strengthen empty-input handler coverage
+
+* fix: update empty_input_test.go for ExecuteHandler signature change
+
+Main added an internalToken parameter to ExecuteHandler in PR #197.
+Update the two test call sites to pass empty string for the new param.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (cbdc23a)
+
+- Fix(release): add [skip ci] to version bump commit to prevent infinite loop (#194)
+
+The release workflow pushes a version bump commit to main, which
+triggers another release workflow run, creating an infinite loop.
+Adding [skip ci] to the commit message prevents the pushed commit
+from triggering any workflows.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (ff0a88f)
+
+- Fix(release): use deploy key to bypass branch protection on push (#193)
+
+The release workflow pushes version bump commits directly to main,
+which is blocked by the new branch ruleset requiring PRs. Use a
+deploy key (which is in the ruleset bypass list) instead of the
+default GITHUB_TOKEN.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (11d0889)
+
+- Fix(control-plane): resolve agent node health status flapping (#169)
+
+* fix(control-plane): resolve agent node health status flapping (#167)
+
+Three independent health systems (HealthMonitor, StatusManager, PresenceManager)
+were fighting each other, causing nodes to flicker between online/stale/offline.
+
+Root causes fixed:
+- Single HTTP failure instantly marked nodes inactive (now requires 3 consecutive failures)
+- Heartbeats silently dropped for 10s after health check marked node inactive (removed)
+- 30s recovery debounce blocked legitimate recovery (reduced to configurable 5s)
+- 8s heartbeat DB cache caused phantom staleness (reduced to 2s)
+- 30s reconciliation threshold too aggressive with cache delay (increased to 60s)
+
+Changes:
+- health_monitor.go: Add consecutive failure tracking, recovery debounce, sync.Once for Stop()
+- status_manager.go: Remove heartbeat-dropping logic, configurable stale threshold
+- config.go: Add NodeHealthConfig with env var overrides
+- nodes.go: Reduce heartbeat cache from 8s to 2s
+- server.go: Wire config into health monitor and status manager
+- NodesPage.tsx: Add 30s background refresh for fresh timestamps
+
+Tests: 10 new tests (5 unit + 3 integration + 2 status manager) all passing.
+Integration tests wire all 3 services concurrently to validate no-flapping behavior.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* fix(control-plane): harden health monitor against races, flapping, and stale MCP data
+
+Code review follow-up for #167. Addresses race conditions, missing MCP
+health refresh, and test reliability issues found during review.
+
+Key fixes:
+- Eliminate stale pointer race: checkAgentHealth now takes nodeID string
+  instead of *ActiveAgent, re-fetching canonical state after HTTP call
+- Fix MCP health going stale: active agents now refresh MCP data on every
+  health check, not only on status transitions
+- Initialize LastTransition on registration so debounce has a valid baseline
+- Cap consecutive failure counter to prevent unbounded growth
+- Add lifecycle guard to NodesPage polling to prevent React state updates
+  after unmount
+- Fix RecoverFromDatabase tests that raced against async goroutine
+- Extract health score magic numbers into named constants
+- Document zero-value-means-default semantics on NodeHealthConfig
+
+Tests: 30/30 health monitor + 3/3 integration tests pass
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* chore: retrigger CI
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.5 <noreply@anthropic.com> (e74ed99)
+
+- Fix(sdk/python): use actual version and metadata in agent registration (#166)
+
+The registration payload hardcoded version to "1.0.0" and did not include
+agent metadata (description, tags, author). This passes the agent's actual
+version and metadata through to the control plane registration endpoint.
+
+Also fixes hardcoded sdk_version in deployment tags to use the real package
+version from agentfield.__version__.
+
+Fixes #148
+
+Co-authored-by: Claude Opus 4.5 <noreply@anthropic.com> (35d2685)
+
+- Fix(sdk/python): prevent memory event websocket from blocking agent startup (#165)
+
+* fix(sdk/python): support websockets v14+ in memory event client
+
+websockets v14+ renamed the `additional_headers` parameter to
+`extra_headers`. Since the SDK does not pin a websockets version,
+users installing fresh get v14+ and hit:
+
+  create_connection() got an unexpected keyword argument 'additional_headers'
+
+This causes the memory event websocket connection to fail during
+agent startup, and the blocking reconnect retry loop (exponential
+backoff up to 31s) prevents uvicorn from completing initialization.
+
+- Detect websockets major version at import time and use the correct
+  parameter name (extra_headers for v14+, additional_headers for older)
+- Update unit test mock to accept either parameter name
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix(sdk/python): prevent memory event connection from blocking agent startup
+
+When the control plane websocket is unreachable, the memory event client's
+connect() method would block indefinitely during FastAPI startup due to
+exponential backoff retries (up to 31s). This prevented uvicorn from ever
+binding to its port.
+
+- Add 5s timeout to initial websocket connection attempt
+- Background the reconnect retry loop so startup completes immediately
+- Remove incorrect websockets version detection (additional_headers is
+  correct for all modern versions v13+)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* test(sdk/python): add tests for websockets version compat and non-blocking reconnect
+
+- Test that v14+ uses additional_headers parameter
+- Test that pre-v14 uses extra_headers parameter
+- Test that failed connection backgrounds the retry loop instead of blocking
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* test(sdk/python): use CI matrix for websockets version compat testing
+
+Replace monkeypatched version tests with real version detection tests
+that validate against the actually installed websockets library. Add a
+websockets-compat CI job that runs memory events tests against both
+websockets 12.0 (extra_headers) and 15.0.1 (additional_headers) in
+parallel.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* fix(sdk/python): remove unused variable in test
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (4a63bec)
+
+- Fix(ci): enable performance comments on fork PRs (#163)
+
+Split the Performance Check workflow into two parts to work around
+GitHub's security restriction that prevents fork PRs from posting
+comments.
+
+Changes:
+- memory-metrics.yml: Save benchmark results as artifact instead of
+  posting comments directly
+- memory-metrics-report.yml: New workflow triggered by workflow_run
+  that downloads results and posts the comment with base repo
+  permissions
+
+This fixes the "Resource not accessible by integration" 403 error
+that occurred when external contributors opened PRs.
+
+Co-authored-by: Claude <noreply@anthropic.com> (a130f94)
+
+- Fix(auth): allow root path to redirect to UI without auth (#158)
+
+When auth is enabled, accessing localhost:8080 directly would return
+{"error":"unauthorized"} instead of redirecting to /ui/ where the
+React app prompts for the API key.
+
+The fix adds "/" to the auth middleware's skip list. This is safe
+because the root path only performs a redirect to /ui/ - no data
+is exposed.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-authored-by: Claude <noreply@anthropic.com> (e3a0991)
+
+- Fix(sdk): prevent WebSocket socket leak in MemoryEventClient (#157)
+
+* fix(sdk): prevent WebSocket socket leak in MemoryEventClient
+
+The MemoryEventClient had several issues causing socket leaks:
+
+1. connect() didn't close the previous WebSocket before creating a new one
+2. Both 'error' and 'close' events triggered reconnect, causing duplicates
+3. No guard against concurrent reconnect scheduling
+
+This fix:
+- Adds cleanup() method to properly terminate and remove listeners
+- Adds reconnectPending flag to prevent duplicate reconnect scheduling
+- Cleans up existing WebSocket before creating a new one
+- Uses ws.terminate() for forceful socket closure
+
+This was causing the agent process to accumulate thousands of open
+socket file descriptors, eventually exhausting ephemeral ports and
+causing EADDRNOTAVAIL errors.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* Consolidate HTTP agents and fix socket leak cleanup
+
+This commit addresses additional socket leak issues discovered during
+investigation of the WebSocket memory leak:
+
+1. Consolidated HTTP agents into shared module (utils/httpAgents.ts)
+   - Previously each client file (AgentFieldClient, MemoryClient,
+     DidClient, MCPClient) created its own HTTP agent pair
+   - Now all clients share a single pair of agents
+   - Reduces memory overhead and ensures consistent connection pooling
+
+2. Fixed setTimeout tracking in MemoryEventClient
+   - Added reconnectTimer property to store timeout ID
+   - Clear timeout in cleanup() to prevent orphaned timers
+   - Prevents potential timer leaks during rapid connect/disconnect
+
+3. Added clear() method to MCPClientRegistry
+   - Allows proper cleanup of registered MCP clients
+
+4. Increased memory test threshold from 12MB to 25MB
+   - CI environments show higher variance in GC timing
+   - Local tests show ~5MB growth, well within threshold
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (4bdc367)
+
+- Fix: add maxTotalSockets to prevent socket exhaustion across IPv4/IPv6 (#156)
+
+The previous fix with maxSockets only limited connections per-host, but
+Railway's internal DNS returns both IPv4 and IPv6 addresses which are
+treated as separate hosts. This caused connections to grow unbounded.
+
+Adding maxTotalSockets: 50 limits total connections across ALL hosts,
+properly preventing socket exhaustion in dual-stack environments.
+
+Changes:
+- Add maxTotalSockets: 50 to all http.Agent instances
+- Remove deprecated timeout option from http.Agent
+- Bump SDK version to 0.1.35
+- Update init-example to use 0.1.35
+
+Co-authored-by: Claude <noreply@anthropic.com> (d1f4175)
+
+- Fix(sdk): add connection pooling to all HTTP clients (#155)
+
+* fix(sdk): add connection pooling to all HTTP clients
+
+Add shared HTTP agents with connection pooling to MemoryClient,
+DidClient, and MCPClient to prevent socket exhaustion on long-running
+deployments.
+
+This completes the fix started in PR #153 which only addressed
+AgentFieldClient. Without this fix, agents using memory, DID, or MCP
+features would still leak connections.
+
+Bumps SDK to 0.1.34.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: increase memory leak test threshold and update init-example SDK version
+
+- Bump init-example to @agentfield/sdk ^0.1.34 for connection pooling fix
+- Increase memory leak test threshold from 10MB to 12MB to reduce CI flakiness
+  (Node 18 on CI hit 10.37MB due to GC timing variance)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (3d8b082)
+
+- Fix(sdk): prevent socket exhaustion from connection leak (#153)
+
+* feat(deploy): add Railway template for one-click deployment
+
+Add Railway configuration for easy deployment of the control plane with PostgreSQL:
+- railway.toml and railway.json at repo root for Railway auto-detection
+- Dockerfile reference to existing control-plane build
+- Health check configuration (/api/v1/health)
+- README with setup instructions and deploy button
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: use correct CLI installation command
+
+* fix: add cache mount IDs for Railway compatibility
+
+Railway's Docker builder requires explicit id parameters for cache mounts.
+Added id=npm-cache, id=go-build-cache, and id=go-mod-cache to the
+respective cache mount directives.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* fix: remove BuildKit cache mounts for Railway compatibility
+
+Railway's builder has specific cache mount requirements that differ from
+standard BuildKit. Removing cache mounts entirely - Railway has its own
+layer caching, so builds still benefit from caching.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* feat: add Railway-deployable init-example agent
+
+- Add standalone package.json with npm-published @agentfield/sdk
+- Add Dockerfile for Railway deployment
+- Update README with step-by-step agent deployment instructions
+- Include curl examples to test echo and sentiment reasoners
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* Add railway.toml for init-example to disable healthcheck
+
+* Revert: remove railway.toml from init-example
+
+* Add railway.toml to init-example to override root config
+
+* forward API key
+
+* Update Railway deployment to use Docker images
+
+- Remove railway.toml files (now using Docker images directly)
+- Add AGENTFIELD_API_KEY and AGENT_CALLBACK_URL support to init-example
+- Rewrite Railway README for Docker-based deployment workflow
+- Document critical AGENT_CALLBACK_URL for agent health checks
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* chore: bump @agentfield/sdk to 0.1.32
+
+* debug: add diagnostic logging to init-example
+
+* remove logs
+
+* fix(sdk): prevent socket exhaustion from connection leak
+
+- Add shared HTTP agents with connection pooling (maxSockets: 10)
+- Enable keepAlive to reuse connections instead of creating new ones
+- Fix sendNote() which created new axios instance on every call
+- Add 30s timeout to all HTTP requests
+
+Fixes agent going offline after running for extended periods due to
+56K+ leaked TCP connections exhausting available sockets.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (8a64a48)
+
+- Fix(ts-sdk): add HTTP timeout and always log heartbeat failures (#152)
+
+- Add 30-second timeout to axios client to prevent requests from hanging
+  indefinitely on network issues (matches Python SDK behavior)
+- Always log heartbeat failures regardless of devMode setting to aid
+  debugging when agents go offline
+
+This fixes an issue where TypeScript agents would silently stop working
+after ~5 minutes on Railway (and potentially other cloud platforms) due to
+network requests hanging forever without any error logs.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-authored-by: Claude <noreply@anthropic.com> (8aedc5c)
+
+- Fix: add cache mount IDs for Railway compatibility (#150)
+
+* feat(deploy): add Railway template for one-click deployment
+
+Add Railway configuration for easy deployment of the control plane with PostgreSQL:
+- railway.toml and railway.json at repo root for Railway auto-detection
+- Dockerfile reference to existing control-plane build
+- Health check configuration (/api/v1/health)
+- README with setup instructions and deploy button
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: use correct CLI installation command
+
+* fix: add cache mount IDs for Railway compatibility
+
+Railway's Docker builder requires explicit id parameters for cache mounts.
+Added id=npm-cache, id=go-build-cache, and id=go-mod-cache to the
+respective cache mount directives.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+* fix: remove BuildKit cache mounts for Railway compatibility
+
+Railway's builder has specific cache mount requirements that differ from
+standard BuildKit. Removing cache mounts entirely - Railway has its own
+layer caching, so builds still benefit from caching.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com> (8ea9ecb)
+
+
+
+### Other
+
+- Change agentfield port from 8080 to 8081 (d4146f1)
+
+- Remove OpenCode serve+attach workaround for stateless CLI (#326)
+
+* remove OpenCode serve+attach workaround for stateless CLI
+
+* fix: use correct OpenCode CLI flags (-p, -c, MODEL env var)
+
+* fix: Restored system_prompt support in both SDKs (2aed6bd)
+
+- Added type annotations to Agent.__init__ (#315) (abf5bfb)
+
+- Add unit test for retry handler (#307)
+
+* Add unit tests for retry helpers (isRetryableDBError, backoffDelay)
+
+* added better documentation (1dec612)
+
+- Refine language in README for clarity and emphasis (#296) (5b4ca62)
+
+- Revert "feat(harness): parse real cost from opencode JSON output (#269)" (#270)
+
+This reverts commit b1a023dded6f03ea76487fa416aa077f17889429. (7377a72)
+
+- Fix squished authorization table layout (#253)
+
+* Fix squished authorization table layout
+
+Widen the grid template columns for Status, Registered, and Actions
+so they don't overlap. Use flexible sizing for Registered and Actions
+columns to accommodate varying content widths.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Fix authorization table: use fixed widths for right columns
+
+The fr-based columns were consuming nearly all space, squeezing
+Status/Registered/Actions into a tiny area. Use fixed px widths
+for the right 3 columns (matching the pattern used by other tables)
+so they get space allocated first before fr columns divide the rest.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Fix Registered column wrapping and Actions column alignment
+
+- Add whitespace-nowrap to Registered time and action buttons so
+  "21 hours ago" and "Approve Reject" stay on one line
+- Widen Actions column to 160px to fit both buttons
+- Add "Actions" header label so all 6 columns have visible headers
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Widen Actions column to 200px to fit Approve + Reject buttons
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+* Reduce left column fr values to stop hogging space from right columns
+
+All three flexible columns now use 1fr instead of 2fr/1.5fr, giving
+equal weight and leaving more room for Status, Registered, and Actions.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (4d534b9)
+
+- Revert "fix: include API key in note() request headers"
+
+This reverts commit 94725ff34008e2fad19d778ec12470c213753168. (8091824)
+
+- Set up vitest testing infrastructure, with sample test cases for status badge component (#191)
+
+* Set up vitest testing infrastructure, with sample test cases for status badge component
+
+* Reversed IDE formatting from computer to prevent large diff in changelog.md
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (0c5147f)
+
+- Fix async execution polling missing auth headers (#180)
+
+The _poll_single_execution and _batch_poll_executions methods did not
+include authentication headers when polling execution status, causing
+401 Unauthorized errors when the control plane requires API key auth.
+
+Add auth_headers parameter to AsyncExecutionManager and pass it through
+from both AgentFieldClient and Agent when creating the manager.
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com> (26692de)
+
+- Add SWE-AF as first production example in README
+
+SWE-AF is an autonomous software engineering factory built on AgentField —
+one API call spins up a full engineering fleet that plans, codes, tests,
+and ships complex software end-to-end.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com> (56a9ffa)
+
+- Fix workflow cleanup to remove executions-backed run summaries (#177)
+
+* Fix workflow cleanup to remove run summaries from executions
+
+* Add Postgres cleanup parity test for workflow deletion (ab2ce92)
+
+- Fix UI workflow delete 404 by registering cleanup route (#174) (ee47f56)
+
+- Improve README: add Discord visibility and Production Examples section
+
+- Add Discord link to quick links navigation row
+- Remove Deep Research banner (replaced with examples table)
+- Add Production Examples section with Deep Research API and RAG Evaluator
+- Enhance Community section with prominent Discord badge
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com> (75f0f2f)
+
+- Add skill execution data to observability events (#147)
+
+Include skill metadata in execution events when skills are invoked:
+- skill_id: explicit skill identifier
+- skill: skill schema (id, input_schema, tags)
+- agent_skills: all skills on the agent node
+
+This mirrors the existing pattern for reasoner data and enables
+downstream systems to track skill usage and execution metrics.
+
+Co-authored-by: Claude <noreply@anthropic.com> (584bf74)
+
+- Include input payload in execution events and add output schemas to reasoner examples (#146)
+
+- Include input payload in status update, completion, and failure events
+- Add explicit output schemas to analyzeSentiment and processWithNotes reasoners
+- Improves event data completeness for downstream consumers
+
+Co-authored-by: Claude <noreply@anthropic.com> (aae99c2)
+
+- Banner update (de723e3)
+
+- Update banner image (dc0ce8f)
+
+- Adds deep research banner to README
+
+Adds a visual banner for the "Deep Research API" to the README file.
+
+This enhances the visual appeal and branding of the project's main documentation page. (41b6ab7)
+
+
+
+### Performance
+
+- Perf(executions): skip payload columns in all list and aggregate queries (#274)
+
+All execution list, stats, and aggregate endpoints were fetching
+input_payload and result_payload for every row. With ~1.1 MB average
+payload size in pr-af, common endpoints were transferring hundreds of
+MB per request:
+
+- GetEnhancedExecutionsHandler (100 items × 1.1 MB = 110 MB) — main
+  /ui/executions page; ExcludePayloads safe, EnhancedExecution has no
+  payload fields
+- GetExecutionStatsHandler (1000 rows × 1.1 MB = 1.1 GB) — only uses
+  status and duration counts
+- GetExecutionTimelineHandler (50k rows × 1.1 MB) — only uses timing
+  and status per hour; 5-min cached
+- GetRecentActivityHandler (20 rows) — no payload fields in response
+- ListExecutionsHandler (up to 100 rows) — InputSize/OutputSize shows
+  0 in agent-scoped list (acceptable vs. 110 MB transfer)
+- GetExecutionsSummaryHandler (up to 100 rows) — same
+- GetWorkflowRunDetailHandler (up to 10k rows per run) — BuildWorkflowDAG
+  uses only IDs, status, timing
+
+Detail endpoints (GetExecutionDetailsGlobalHandler,
+GetExecutionDetailsHandler) are intentionally unchanged — they
+legitimately need the full payload for the IO viewer tab.
+
+Co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com> (b523755)
+
+- Perf(dashboard): skip fetching input/result payloads in dashboard queries (#273)
+
+Dashboard API endpoints (summary and enhanced) call QueryExecutionRecords
+with limits up to 50,000 rows but never use the input_payload or
+result_payload columns in any of their processing functions. In deployments
+with large execution payloads (e.g. ~1.1 MB average per row), this caused
+dashboard API responses of 9-11 seconds due to fetching ~1 GB of TOAST
+data per request.
+
+Add ExcludePayloads bool to ExecutionFilter. When set, the query substitutes
+NULL AS input_payload, NULL AS result_payload so the column count stays
+identical and scanExecution requires no changes. Set ExcludePayloads: true on
+all six dashboard QueryExecutionRecords call sites.
+
+Co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com> (5558f40)
+
+- Perf(ci): speed up functional tests with parallel execution and faster health checks (#159)
+
+- Add pytest-xdist for parallel test execution (-n auto)
+- Reduce health check timing from 60*2s=120s to 30*1s=30s max wait
+- Control plane typically starts in ~10-15s, so 30s is sufficient headroom
+
+These are safe, non-cache-related optimizations that should reduce
+functional test CI time by ~30-60 seconds without changing test logic.
+
+Co-authored-by: Claude Opus 4.5 <noreply@anthropic.com> (02191e1)
+
+
+
+### Testing
+
+- Test(web-ui): add node card coverage (#314)
+
+Co-authored-by: nanqinhu <139929317+nanqinhu@users.noreply.github.com> (527c78c)
+
+- Test(control-plane): add execution cleanup service coverage (#195) (5a227cf)
+
+- Test(sdk/go): add HTTP error handling tests (#160)
+
+* test: add test handling of new http status codes
+
+* add tests for unmarshal json, network errorr, and timeout
+
+* add other test and fix
+
+* fix (481b410)
+
 ## [0.1.65-rc.3] - 2026-04-07
 
 
